@@ -1,3 +1,8 @@
+Resource-Constrained Implementation Plan
+
+> This is the ACTIVE build plan. It maps the north-star PRD down to a student laptop
+> and ~₹3,500 budget using free-tier services and quantized models.
+
 1. The "Zero-Cost" Enterprise Architecture
 
 The Intercept Gateway: FastAPI + Asynchronous Python

@@ -91,24 +91,37 @@ When the sparring partner finds a bypass, the system logs it, learns from it, an
 
 ## ✨ Features
 
-### Implemented
-- [x] Async FastAPI reverse proxy with OpenAI-compatible API
-- [x] Layered guardrail pipeline (regex → injection → toxicity → PII)
+### Scaffolded (modules written, pending integration)
+- [x] Project structure with layered module architecture
+- [x] FastAPI app factory with async lifespan management
+- [x] OpenAI-compatible request/response Pydantic schemas
 - [x] Regex pre-filter for known jailbreak templates (DAN, AIM, developer mode)
-- [x] PII detection & redaction (email, phone, credit card, Aadhaar)
-- [x] Semantic caching with Redis + MiniLM embeddings
-- [x] Groq LLM provider integration
-- [x] Structured JSON logging with request timing
-- [x] Docker Compose for local development
-- [x] Red-teaming engine with template, encoding, and PAIR attack strategies
-- [x] Evaluation metrics (ASR, precision, recall, F1)
+- [x] PII detection & redaction module (email, phone, credit card, Aadhaar)
+- [x] Injection detection module (DeBERTa-based, model loading prepared)
+- [x] Toxicity classification module (toxic-bert, model loading prepared)
+- [x] Semantic cache module with Redis + MiniLM cosine similarity
+- [x] Groq LLM provider with abstract `BaseLLMProvider` interface
+- [x] Structured JSON logging via structlog
+- [x] Docker Compose for local development (proxy + Redis)
+- [x] Red-team attack modules (template, encoding) with CLI runner
+- [x] Evaluation metrics module (ASR, precision, recall, F1)
 
-### In Progress
-- [ ] Fine-tuned DeBERTa injection classifier (training on Colab)
+### To Build (core integration & features)
+- [ ] Wire the full proxy pipeline: cache → guardrails → LLM → response
+- [ ] Load pre-trained injection & toxicity models at startup
+- [ ] Register timing middleware and connect telemetry
+- [ ] PAIR attack (LLM-vs-LLM iterative refinement)
+- [ ] Output guardrails (screen LLM responses for PII/harmful content)
 - [ ] Supabase telemetry integration
 - [ ] Streamlit dashboard with live metrics
-- [ ] Closed-loop defense: auto-add bypasses to blocklist
+- [ ] Closed-loop defense: auto-add bypasses to semantic cache
 - [ ] Benchmark against JailbreakBench dataset
+- [ ] Benign prompt test set for false-positive measurement
+
+### Future (north-star roadmap)
+- [ ] Streaming/SSE response support (`stream=True`)
+- [ ] API key authentication & rate limiting
+- [ ] Fine-tuned DeBERTa injection classifier (training on Colab)
 
 ---
 
@@ -123,7 +136,7 @@ When the sparring partner finds a bypass, the system logs it, learns from it, an
 ### 1. Clone & Configure
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/project-aegis.git
+git clone https://github.com/YOUR_USERNAME/project-aegis.git  # ← replace with your GitHub URL
 cd project-aegis
 
 # Copy environment template and add your API keys
@@ -181,12 +194,12 @@ streamlit run dashboard/app.py
 
 The red-teaming engine implements multiple attack strategies from the academic literature:
 
-| Strategy | Technique | Complexity | Reference |
-|---|---|---|---|
-| **Template** | Known jailbreaks (DAN, AIM, role-play, hypothetical) | Low | [JailbreakChat](https://jailbreakchat.com) |
-| **Encoding** | Base64, ROT13, leetspeak, word-split obfuscation | Low | [Wei et al. 2023](https://arxiv.org/abs/2307.15043) |
-| **PAIR** | LLM-vs-LLM iterative prompt refinement | Medium | [Chao et al. 2023](https://arxiv.org/abs/2310.08419) |
-| **GCG** | Gradient-based adversarial suffix generation (Colab) | High | [Zou et al. 2023](https://arxiv.org/abs/2307.15043) |
+| Strategy | Technique | Complexity | Status | Reference |
+|---|---|---|---|---|
+| **Template** | Known jailbreaks (DAN, AIM, role-play, hypothetical) | Low | ✅ Scaffolded | [JailbreakChat](https://jailbreakchat.com) |
+| **Encoding** | Base64, ROT13, leetspeak, word-split obfuscation | Low | ✅ Scaffolded | [Wei et al. 2023](https://arxiv.org/abs/2307.15043) |
+| **PAIR** | LLM-vs-LLM iterative prompt refinement | Medium | 🔲 Planned | [Chao et al. 2023](https://arxiv.org/abs/2310.08419) |
+| **GCG** | Gradient-based adversarial suffix generation (Colab) | High | 🔲 Planned | [Zou et al. 2023](https://arxiv.org/abs/2307.15043) |
 
 ```bash
 # Run a full red-team campaign
@@ -210,7 +223,7 @@ python -m redteam.runner \
 
 ## 📊 Evaluation Results
 
-> **Note:** These are placeholder metrics. Real numbers will be filled in after benchmarking against [JailbreakBench](https://huggingface.co/datasets/JailbreakBench/JBB-Behaviors).
+> **Note:** These are target metrics. Real numbers will be filled in after the proxy pipeline is wired and benchmarked against [JailbreakBench](https://huggingface.co/datasets/JailbreakBench/JBB-Behaviors).
 
 | Guardrail Method | Precision | Recall | F1 | ASR ↓ | Latency |
 |---|---|---|---|---|---|
@@ -320,7 +333,7 @@ This project was designed to run on a student budget with no expensive hardware.
 
 ## 🔮 Vision & Roadmap
 
-The current implementation is a resource-constrained proof-of-concept. The north-star architecture (detailed in [docs/prd.md](docs/prd.md)) envisions a production-grade system:
+The current implementation is a resource-constrained proof-of-concept built for a student laptop and ₹3,500 budget. The north-star architecture (detailed in [docs/prd.md](docs/prd.md)) envisions a production-grade system that would require significant compute — it is a **design document**, not a build target for this phase:
 
 ### Phase 2 — Performance (Future)
 - [ ] Rewrite gateway in **Rust** (Axum + Tokio) for zero-GC latency

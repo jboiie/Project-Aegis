@@ -1,5 +1,10 @@
 PRD: Project Aegis – Autonomous LLM Security & Red-Teaming Pipeline
 
+> **⚠️ This is a NORTH-STAR design document.** It describes the ideal production-grade architecture
+> assuming unlimited compute and budget (Rust, Triton, Kafka, K8s, MARL). The current implementation
+> is a resource-constrained proof-of-concept using FastAPI, Redis, Supabase, and Groq's free tier,
+> running on a student laptop with a ~₹3,500 budget. See the README for actual build status.
+
 1. Executive Summary & Vision
 
 The enterprise deployment of Generative AI is strictly bottlenecked by the lack of deterministic safety guarantees. Project Aegis V2.0 is a zero-trust, high-throughput security proxy designed to sit between user interfaces and target LLMs. Moving beyond simple Python-based API wrappers, Aegis is built as a highly concurrent, distributed system capable of handling millions of tokens per second with mathematically constrained latency budgets. It features an integrated Multi-Agent Reinforcement Learning (MARL) environment that autonomously red-teams the infrastructure, creating a self-healing immune system for production AI.
