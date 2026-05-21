@@ -1,7 +1,13 @@
 """
-Proxy — Forwards safe prompts to the target LLM.
+Aegis Sandbox — Proxy Layer
 
-Uses httpx for async HTTP calls to Groq's OpenAI-compatible API.
+NOTE: This is a sandbox component, not the primary system.
+The primary system is the red-teaming pipeline in redteam/runner.py.
+
+This module forwards prompts that survive the guardrail stack to Groq's LLM.
+It is the final stage of the sandbox pipeline, reached only when L1–L4 defenses
+do not block the incoming prompt. The red-teaming pipeline measures how often
+attacks reach this stage by inspecting the sandbox's response.
 """
 
 import httpx

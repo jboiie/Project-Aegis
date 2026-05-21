@@ -2,134 +2,150 @@ Resource-Constrained Implementation Plan
 
 > This is the ACTIVE build plan. It maps the north-star PRD down to a student laptop
 > and ~₹3,500 budget using free-tier services and quantized models.
+> Priority order: red-team runner → attack modules → metrics → PAIR → sandbox wiring → dashboard.
 
-1. The "Zero-Cost" Enterprise Architecture
+---
 
-The Intercept Gateway: FastAPI + Asynchronous Python
+## 1. Project Identity
 
-The Pivot: We drop Rust for now and stick to Python, but we write it like a senior engineer.
+**Project Aegis** is an autonomous LLM red-teaming pipeline with a live guardrail sandbox as its attack target.
 
-The Tech: Use FastAPI. Implement strict async/await patterns so your proxy never blocks while waiting for an LLM to respond.
+The pipeline (`redteam/`) is the primary system. Build it first.
+The sandbox (`src/`) is the attack target. Build it second, to the minimum viable state needed to measure against.
 
-The Flex: Implement Redis (running locally in a Docker container) for semantic caching. You can use a tiny, lightning-fast embedding model (like all-MiniLM-L6-v2) to cache and block repeated malicious prompts instantly.
+---
 
-The Guardrail Fleet: Quantized Micro-Models (GGUF)
+## 2. The "Zero-Cost" Stack
 
-The Pivot: We can't use NVIDIA Triton or massive 70B models. We must aggressively shrink the models so they run on your notebook's CPU/integrated GPU.
+### 2.1 Red-Teaming Pipeline (Primary — Build First)
 
-The Tech: Use llama.cpp and GGUF model formats. You can run small, quantized 4-bit or 8-bit models locally with surprisingly low latency.
+**Runner**: `redteam/runner.py` — async HTTP client (httpx) that fires attack payloads at the target
+endpoint and collects responses. Already scaffolded. Integration work remaining.
 
-The Defenses: * Injection/Toxicity: Fine-tune a tiny DistilBERT or DeBERTa model (these are under 300MB and run instantly on CPU).
+**Attack Modules**:
+- `redteam/attacks/template.py` — DAN, AIM, role-play templates. Load from a corpus JSON; inject into the target endpoint.
+- `redteam/attacks/encoding.py` — Base64, ROT13, leetspeak transforms. Apply to a harmful payload and fire at the sandbox.
+- `redteam/attacks/pair.py` — PAIR loop: use Groq's free Llama 3 as the attacker LLM. Iterate until bypass or max iterations. This is the most important attack module to complete.
 
-Target LLM: Instead of paying OpenAI, route your proxy to Groq's API (which has a generous free tier for Llama 3) or use OpenRouter (which costs pennies).
+**Evaluation**:
+- `redteam/evaluation/metrics.py` — ASR, precision, recall, F1. Already scaffolded. Add per-layer breakdown once sandbox telemetry is wired.
+- Automated judge: string-match for refusals first (free). LLM-as-judge via Groq free tier for ambiguous cases.
 
-The Telemetry Nerve Center: Supabase + Streamlit
+### 2.2 Aegis Sandbox (Target — Minimal Viable Implementation)
 
-The Pivot: Kafka and ClickHouse require dedicated servers. We need serverless and free.
+The sandbox exists to be attacked, not to be perfect. Build the minimum needed for the pipeline to measure against it.
 
-The Tech: Use Supabase (a free-tier open-source PostgreSQL alternative).
+**Required for measurement:**
+- FastAPI endpoint at `/v1/chat/completions` that accepts prompts and returns responses
+- L1 regex guardrail running (already scaffolded)
+- L2 DeBERTa injection classifier loaded and running (model loading not yet wired)
+- L3 toxicity classifier loaded and running (model loading not yet wired)
+- Basic telemetry: log each request, verdict (blocked/passed), and which layer triggered
 
-The Architecture: When your FastAPI proxy processes a prompt, it sends the logs asynchronously via background tasks to Supabase.
+**Not required for first measurement pass:**
+- L4 PII redaction (add in Phase 2)
+- Redis semantic cache (add in Phase 2)
+- Full Supabase telemetry (local file logging sufficient for Phase 1)
 
-The Dashboard: Build your MLOps dashboard using Streamlit Cloud (free hosting). It pulls the attack logs from Supabase and visualizes your system's defense metrics.
+**The sandbox tech stack:**
+- FastAPI + async Python (no Rust needed — sandbox throughput is not the constraint)
+- Quantized DeBERTa and toxicity models running on CPU (< 300MB each, fine on a student laptop)
+- Groq free tier as the backend LLM (Llama 3 70B, fast inference, zero cost)
+- Local Redis in Docker for semantic cache
 
-The Attacker Engine: Colab-Powered Red Teaming
+### 2.3 Telemetry: Supabase + Streamlit
 
-The Pivot: We offload the heavy mathematical computation (like the GCG gradient attacks) off your laptop.
+**Pivot**: Kafka and ClickHouse require dedicated servers. Use Supabase (free-tier PostgreSQL) instead.
 
-The Tech: Write your Red Teaming scripts in Google Colab.
+Every attack attempt, verdict, and bypass is logged asynchronously from the sandbox to Supabase.
+The Streamlit dashboard pulls from Supabase and visualizes:
+- ASR over time (rolling window)
+- Per-strategy bypass counts
+- Per-layer block breakdown
+- Raw bypass log (prompt + response)
 
-The Execution: Your Colab notebook will act as the "Attacker." It generates the optimized adversarial prompts using its free T4 GPU, then fires those attacks over the internet at your locally running FastAPI proxy (exposed via a free tool like ngrok) to test your defenses.
+---
 
+## 3. Budget Allocation
 
-2. The ₹3,500 INR Budget Allocation
+Every rupee goes toward compute for the pipeline's most demanding components.
 
-You have a tight budget, so every rupee goes toward compute for the most impressive parts of the project: the adversarial attacks and the final deployment flex.
+| Resource | Purpose | Estimated Cost |
+|---|---|---|
+| Google Colab Pro (1 month) | PAIR attacker LLM longer runtimes; GCG gradient attacks on T4/A100 GPU | ~₹900 |
+| OpenRouter / DeepInfra credits | Larger attacker LLM for PAIR (Llama 3 70B or Claude Haiku) | ~₹850 ($10 USD) |
+| Hetzner / DigitalOcean VPS (1 month) | Optional: deploy final stack publicly for demo/portfolio | ~₹500–₹800 |
+| Supabase | Attack log database | ₹0 (free tier) |
+| Streamlit Community Cloud | Dashboard hosting | ₹0 (free tier) |
+| Groq API | Sandbox backend LLM + PAIR attacker LLM | ₹0 (free tier) |
+| **Total** | | **~₹2,250–₹2,550** |
 
-Resource
+---
 
-Purpose
+## 4. Step-by-Step Execution Plan
 
-Estimated Cost (INR)
+### Phase 1 — Pipeline Core (Week 1–2)
 
-Google Colab Pro (1 Month)
+**Goal**: A working red-team runner that can fire template and encoding attacks at any OpenAI-compatible endpoint and report ASR.
 
-To get access to better GPUs (A100/V100) and longer runtimes specifically for training your custom Guardrail models and running the heavy Red Team attack loops.
+1. Complete `redteam/runner.py` integration: fire attacks → collect responses → compute metrics
+2. Complete `redteam/attacks/template.py`: load corpus, inject, parse response
+3. Complete `redteam/attacks/encoding.py`: apply transforms, fire, parse response
+4. Complete `redteam/evaluation/metrics.py`: string-match judge for refusals
+5. Validate against Groq API directly (no sandbox yet) to confirm the pipeline works end-to-end
 
-~ ₹900
+**Deliverable**: `python -m redteam.runner --target https://api.groq.com/... --attacks template,encoding --attempts 50` produces a real ASR report.
 
-OpenRouter / DeepInfra API Credits
+### Phase 2 — Sandbox Wiring (Week 3–4)
 
-For accessing large models (like Llama 3 70B or Claude Haiku) to act as the "Target LLM" your system is defending. (You pay per token; $10 goes a very long way).
+**Goal**: Minimal sandbox running, pipeline attacking it, per-layer telemetry working.
 
-~ ₹850 ($10 USD)
+1. Wire sandbox pipeline: `main.py` startup → load guardrail models → `router.py` → `engine.py` → Groq
+2. Load DeBERTa injection model and toxicity model at startup (quantized, CPU)
+3. Add per-request telemetry: which layer triggered, latency, verdict
+4. Redirect pipeline runner at sandbox: `--target http://localhost:8000/v1/chat/completions`
+5. Run first benchmark campaign: template + encoding, 100 attempts each
 
-Hetzner / DigitalOcean VPS (1 Month)
+**Deliverable**: First real ASR numbers per layer. Fill in the evaluation table in README.
 
-Optional but recommended. A cheap Linux Virtual Private Server to deploy your final Docker Compose stack so it is live on the internet for your resume/interviews.
+### Phase 3 — PAIR + Telemetry Dashboard (Week 5–6)
 
-~ ₹500 - ₹800
+**Goal**: PAIR attack running; dashboard visualizing live pipeline output.
 
-Supabase (Database)
+1. Implement PAIR loop in `redteam/attacks/pair.py`: attacker LLM (Groq Llama 3) iterates until bypass or max iterations
+2. Set up Supabase project; wire sandbox telemetry to log to Supabase
+3. Build Streamlit dashboard: ASR over time, per-strategy breakdown, bypass log
+4. Run PAIR campaign against sandbox; compare ASR to template/encoding baseline
 
-Enterprise-grade PostgreSQL database for logging attacks.
+**Deliverable**: Dashboard live at localhost:8501 showing real metrics. PAIR ASR measured and compared to simpler attacks.
 
-₹0 (Free Tier)
+### Phase 4 — GCG + Benchmarking (Colab GPU)
 
-Streamlit Community Cloud
+**Goal**: GCG attacks running via Colab; pipeline benchmarked against JailbreakBench.
 
-Hosting your interactive telemetry dashboard.
+1. Implement GCG in Colab notebook: generate adversarial suffixes using sandbox's model as proxy gradient signal
+2. Expose local sandbox via ngrok; fire Colab-generated attacks at it
+3. Run pipeline against [JailbreakBench](https://huggingface.co/datasets/JailbreakBench/JBB-Behaviors) behavior dataset
+4. Calibrate automated judge against HarmBench human labels
+5. Report final ASR numbers per strategy vs. JailbreakBench standard
 
-₹0 (Free Tier)
+---
 
-Groq API
+## 5. The Interview Pitch (Reframed)
 
-Ultra-fast inference for testing basic proxy routing.
+The old pitch was: "I built a security proxy."
+The new pitch is: "I built a red-teaming evaluation pipeline."
 
-₹0 (Free Tier)
+When asked about this project:
 
-Total Estimated Spend:
-
-Maximum impact, minimum cost.
-
-~ ₹2,250 - ₹2,550
-
-
-3. Step-by-Step Execution Plan
-
-To build this without getting overwhelmed, you must treat your laptop like a local data center.
-
-Phase 1: The Local Infrastructure (Week 1-2)
-
-Write the FastAPI reverse proxy.
-
-Create a docker-compose.yml file. Containerize your FastAPI app and a local Redis instance.
-
-Write a mock script that sends 100 requests per second to your proxy to ensure your async code handles the load without crashing.
-
-Phase 2: The Guardrails (Week 3-4)
-
-Use Google Colab to fine-tune a small DeBERTa model on a dataset of prompt injections (datasets are free on Hugging Face).
-
-Export the model, download it to your laptop, and integrate it into your FastAPI proxy so it screens incoming text.
-
-Phase 3: The Telemetry (Week 5)
-
-Set up a free Supabase project.
-
-Modify your proxy to log every blocked attack and latency metric to Supabase.
-
-Build a Streamlit dashboard that connects to Supabase and graphs your "Attacks Blocked" and "Average Latency."
-
-Phase 4: The Attack (Week 6)
-
-Use your Colab Pro compute. Write a script that uses evolutionary algorithms to mutate prompts, trying to find combinations that trick your local Guardrail models.
-
-Fire these attacks at your API and watch your Streamlit dashboard light up with the data.
-
-The Ultimate Interview Pitch
-
-When asked about this project, your angle isn't just about AI; it's about systems engineering.
-
-You tell them: "I built an asynchronous LLM security proxy. I wanted to simulate an enterprise MLOps environment, but I was bound by the hardware constraints of a notebook laptop and a $40 budget. To solve this, I containerized the system with Docker, used highly quantized micro-models for local defense inference to save VRAM, offloaded the adversarial generation to Colab, and implemented a serverless telemetry pipeline using Supabase. It proved to me that AI safety isn't just about throwing compute at a problem; it's about intelligent architectural design."
-
+"I built an autonomous LLM red-teaming pipeline. The problem I was solving is that most teams deploy
+guardrails once and never measure whether they still hold as attack techniques evolve. Aegis is the
+continuous measurement tool — it generates jailbreak attacks using template, encoding, and PAIR
+strategies, fires them at a live guardrail sandbox, and produces real ASR metrics broken down by
+attack type and defense layer. The sandbox is a FastAPI proxy with four layers of defense — regex,
+DeBERTa injection classifier, toxicity classifier, and PII redaction — and it's intentionally
+imperfect because that's what makes the metrics honest. I was constrained to a student laptop and
+a ₹3,500 budget, so I quantized the classifier models for CPU inference, used Groq's free tier
+as both the sandbox backend and the PAIR attacker LLM, and offloaded gradient-based attacks to
+Colab. The result is a full evaluation loop: generate attacks, measure bypass rate, log bypasses,
+refine attacks — running at zero compute cost."

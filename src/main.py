@@ -1,11 +1,15 @@
 """
-Project Aegis — FastAPI Application Entry Point
+Aegis Sandbox — FastAPI Application Entry Point
 
-This is the main application factory. It wires together:
-  1. The proxy gateway (routes incoming prompts)
-  2. The guardrail engine (screens prompts for safety)
-  3. The semantic cache (blocks known-malicious prompts instantly)
-  4. The telemetry logger (ships events to Supabase)
+NOTE: This is the SANDBOX TARGET, not the primary system.
+The primary system is the red-teaming pipeline in redteam/runner.py.
+This sandbox exists as a live, instrumented attack target for that pipeline.
+
+This factory wires together the sandbox components:
+  1. The gateway (OpenAI-compatible endpoint the pipeline attacks)
+  2. The guardrail stack (four-layer defense the pipeline measures against)
+  3. The semantic cache (blocks known-bad embeddings in < 5ms)
+  4. The telemetry logger (logs every attack attempt, verdict, and bypass)
 """
 
 from contextlib import asynccontextmanager
@@ -43,8 +47,8 @@ async def lifespan(app: FastAPI):
 def create_app() -> FastAPI:
     """Application factory."""
     app = FastAPI(
-        title="Project Aegis",
-        description="Autonomous LLM Security Proxy & Red-Teaming Pipeline",
+        title="Aegis Sandbox",
+        description="Autonomous LLM red-teaming pipeline with a live guardrail sandbox as its attack target. This is the sandbox — see redteam/ for the pipeline.",
         version="0.1.0",
         lifespan=lifespan,
     )

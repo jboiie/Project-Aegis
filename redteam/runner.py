@@ -1,11 +1,20 @@
 """
-Red Team Runner — Orchestrates automated attacks against the Aegis proxy.
+Red Team Runner — Primary Entrypoint of Project Aegis
 
-Loads attack strategies, fires them at the target endpoint, collects
-results, and computes evaluation metrics.
+This is the core of the project. The Aegis Sandbox (src/) exists so that this
+runner has a real, instrumented system to attack and measure.
+
+The runner orchestrates automated attack campaigns against any OpenAI-compatible
+endpoint. It loads attack strategies, fires them asynchronously at the target,
+collects raw HTTP responses, classifies each response as a bypass or a block,
+and computes evaluation metrics (ASR, precision, recall, F1).
 
 Usage:
-    python -m redteam.runner --target http://localhost:8000 --attacks pair,encoding,template
+    python -m redteam.runner --target http://localhost:8000/v1/chat/completions \\
+        --attacks template,encoding,pair --attempts 100
+
+See redteam/README.md for full pipeline documentation: attack strategies, metric
+definitions, feedback loop design, and PAIR/GCG implementation roadmap.
 """
 
 import asyncio

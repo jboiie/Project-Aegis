@@ -1,12 +1,22 @@
 """
-Guardrail Engine — Orchestrates all safety checks.
+Aegis Sandbox — Guardrail Engine
 
-Runs each guardrail (injection, toxicity, PII, regex) in sequence
-and aggregates results into a single SafetyVerdict.
+This guardrail stack exists as a live attack target for the red-teaming pipeline.
+It is intentionally imperfect — the pipeline's job is to find where it fails.
 
-Design decision: Sequential (not parallel) because the fast regex
-check can short-circuit before loading heavier ML models. This
-saves latency on obviously malicious prompts.
+Each layer catches a different class of attack and is instrumented to log bypass
+events so the pipeline can compute per-layer ASR (Attack Success Rate). The goal
+is not to build a perfect defender — it is to build an honest, measurable one that
+the pipeline can continuously probe and report against.
+
+Defense layers in order of execution:
+  L1: Regex pre-filter       — catches explicit jailbreak templates (< 1ms)
+  L2: DeBERTa injection      — catches semantic injection attempts (~10ms)
+  L3: Toxicity classifier    — catches overtly harmful content (~10ms)
+  L4: PII redaction          — catches standard PII formats (~5ms)
+
+Short-circuit design: cheap layers run first and exit early on obvious attacks,
+saving GPU cycles for the harder cases that reach L2/L3.
 """
 
 from src.gateway.schemas import SafetyVerdict, GuardrailCheck

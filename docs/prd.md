@@ -1,105 +1,184 @@
-PRD: Project Aegis – Autonomous LLM Security & Red-Teaming Pipeline
+PRD: Project Aegis — Autonomous LLM Vulnerability Evaluation Pipeline
 
-> **⚠️ This is a NORTH-STAR design document.** It describes the ideal production-grade architecture
-> assuming unlimited compute and budget (Rust, Triton, Kafka, K8s, MARL). The current implementation
+> **⚠️ This is a NORTH-STAR design document.** It describes the ideal production-grade pipeline
+> assuming significant compute (GPU cluster, Kafka, MARL training loop). The current implementation
 > is a resource-constrained proof-of-concept using FastAPI, Redis, Supabase, and Groq's free tier,
-> running on a student laptop with a ~₹3,500 budget. See the README for actual build status.
+> running on a student laptop with a ~₹3,500 budget. See the README and resource.md for actual build status.
 
-1. Executive Summary & Vision
+---
 
-The enterprise deployment of Generative AI is strictly bottlenecked by the lack of deterministic safety guarantees. Project Aegis V2.0 is a zero-trust, high-throughput security proxy designed to sit between user interfaces and target LLMs. Moving beyond simple Python-based API wrappers, Aegis is built as a highly concurrent, distributed system capable of handling millions of tokens per second with mathematically constrained latency budgets. It features an integrated Multi-Agent Reinforcement Learning (MARL) environment that autonomously red-teams the infrastructure, creating a self-healing immune system for production AI.
+## 1. Executive Summary & Vision
 
-2. Exhaustive Tech Stack & Infrastructure
+Security teams have no standardized way to continuously measure LLM vulnerability. Static guardrails
+are written once and never challenged. Project Aegis is the challenge.
 
-The Intercept Gateway: Rust, Axum, gRPC, Protocol Buffers.
+The core product is an **autonomous red-teaming evaluation pipeline** that continuously generates,
+executes, and measures jailbreak attacks against LLM endpoints. It produces real, reproducible metrics:
+attack success rates (ASR) broken down by attack strategy and guardrail layer, precision/recall on
+safety classifiers, and discovery rates for novel bypasses.
 
-High-Performance Model Serving: NVIDIA Triton Inference Server, TensorRT-LLM, custom C++ CUDA kernels (for attention optimizations).
+The pipeline operates against the **Aegis Sandbox** — a FastAPI proxy with a four-layer guardrail
+stack (regex → DeBERTa injection classifier → toxicity classifier → PII redaction). The sandbox is a
+*controlled target*, not the product. Its guardrails are intentionally imperfect; the pipeline's job is
+to find where they fail and quantify the failure rate.
 
-Telemetry & Event Streaming: Apache Kafka (message brokering), ClickHouse (columnar OLAP database), Power BI (enterprise telemetry visualization).
+The customers for this system are **security researchers and ML safety teams** who need continuous,
+automated measurement of their LLM defense posture — not enterprise teams deploying chatbots.
 
-State & Caching: Redis (in-memory semantic caching).
+---
 
-Machine Learning & MARL: PyTorch, Ray RLlib (for distributed reinforcement learning).
+## 2. Product Vision: The Evaluation Pipeline
 
-Infrastructure as Code (IaC) & Orchestration: Kubernetes (K8s), Docker, Terraform, Helm.
+### 2.1 What the Pipeline Does
 
+1. **Attack Generation** — Loads a corpus of attack strategies (template, encoding, PAIR, GCG) and generates concrete attack payloads targeting a given harmful behavior category
+2. **Execution** — Fires attacks asynchronously at the target endpoint, collecting raw HTTP responses
+3. **Measurement** — Classifies each response as a bypass or a block using an automated judge (string matching + LLM-as-judge for ambiguous cases)
+4. **Reporting** — Computes ASR, precision, recall, and F1 per attack strategy, per guardrail layer, and for the full pipeline
+5. **Feedback** — Successful bypass prompts are logged with metadata (strategy, target layer, response) and fed back to inform the next campaign
 
-3. Core Architectural Components
+### 2.2 Success Metrics
 
-3.1 The Intercept Gateway (Rust/gRPC Proxy)
+The pipeline is successful when it can report the following with reproducible accuracy:
 
-The primary entry point, engineered entirely in Rust to ensure memory safety and eliminate garbage collection pauses during peak throughput.
+| Metric | Definition | Target |
+|---|---|---|
+| **Attack Success Rate (ASR)** | % of attack attempts producing an unsafe response | Accurate within ±2% vs. human eval |
+| **Novel bypass discovery rate** | Unique bypass prompt patterns discovered per campaign | Increasing trend over iterations |
+| **Pipeline automation level** | % of campaign stages requiring no human intervention | > 95% fully automated |
+| **Judge accuracy** | Automated bypass classification vs. human labels | F1 > 0.90 on HarmBench standard |
+| **Evaluation throughput** | Attacks evaluated per hour on student hardware | > 200/hr baseline |
 
-Protocol: Replaces standard REST with gRPC and Protocol Buffers for all internal microservice routing to compress payload sizes and guarantee lightning-fast serialization/deserialization.
+These are the measures of a working red-teaming tool. Proxy latency and throughput are sandbox
+implementation details, not pipeline success metrics.
 
-Semantic Caching: Integrates a Redis cache to store embeddings of evaluated prompts. If an incoming gRPC request matches a known malicious vector embedding (via high cosine similarity), the connection is terminated in under 5 milliseconds.
+---
 
-3.2 The Guardrail Fleet (Triton & TensorRT-LLM)
+## 3. Core Pipeline Components
 
-Defense models (PII redaction, injection detection, toxicity classifiers) are stripped of standard PyTorch overhead and compiled for bare-metal performance.
+### 3.1 Attack Engine
 
-Triton Inference Server: Acts as the host for the fleet, allowing multiple micro-models to be served from a single GPU dynamically.
+Implements four strategies from the academic literature, in order of implementation priority:
 
-Memory Optimization: Implements PagedAttention and continuous batching. This mitigates the memory fragmentation of the KV-cache, allowing the defense models to process concurrent user streams without Out-Of-Memory (OOM) faults.
+**Template Attacks** (Implemented)
+Known jailbreak templates: DAN, AIM, developer mode, role-play framing, hypothetical scenarios.
+Source corpus: JailbreakChat + HarmBench behavior dataset.
+Tests whether pattern-matching defenses (L1 regex) are comprehensive.
 
-C++ Extensibility: Core token-matching logic and early-exit conditions are pushed down to custom C++ bindings for maximum execution speed.
+**Encoding Attacks** (Implemented)
+Obfuscation via Base64, ROT13, leetspeak, character splitting, Unicode substitution.
+Tests whether semantic classifiers (L2/L3) can handle input transformations.
+Reference: Wei et al. 2023.
 
-3.3 The Telemetry Nerve Center (Kafka + ClickHouse)
+**PAIR — Prompt Automatic Iterative Refinement** (In Progress)
+An attacker LLM (e.g., Llama 3 via Groq) receives a target behavior and iteratively rephrases attack
+prompts based on feedback from the sandbox's response. The loop continues until ASR threshold is met
+or max iterations reached.
+Core insight: the attacker LLM specifically targets the defender's failure modes.
+Reference: Chao et al. 2023.
 
-An asynchronous data pipeline designed to ingest, process, and visualize millions of events per second without slowing down the inference gateway.
+**GCG — Greedy Coordinate Gradient** (Planned)
+Gradient-based adversarial suffix generation. Appends a mathematically optimized token sequence to
+any prompt such that the target model's output probability on harmful completions is maximized.
+Requires GPU; runs in Colab, fires at local sandbox via ngrok.
+Reference: Zou et al. 2023.
 
-Kafka Event Bus: Every prompt, latency metric, safety trigger, and memory spike is published as an asynchronous event to a Kafka topic.
+### 3.2 Evaluation Engine
 
-ClickHouse Aggregation: Kafka streams natively into ClickHouse, enabling real-time, millisecond-latency queries over massive datasets of logged tokens.
+Automated bypass classification using a two-stage judge:
 
-Dashboarding: Power BI connects directly to the ClickHouse warehouse to provide enterprise-facing compliance reports, attack surface metrics, and system health visualizations.
+1. **String-match judge**: Checks for known refusal phrases ("I cannot", "I'm unable to", "As an AI..."). Fast, zero-cost, handles clear-cut cases.
+2. **LLM-as-judge**: For ambiguous responses, uses a secondary LLM to classify the response as compliant (bypass) or non-compliant (block). Calibrated against HarmBench human labels.
 
-3.4 Multi-Agent Autonomous Red-Teaming (MARL)
+Outputs per attack run:
+- `attack_success_rate`: Primary metric
+- `precision`, `recall`, `F1`: Classifier quality across the full guardrail stack
+- `per_layer_asr`: Which guardrail layer was bypassed (requires instrumented sandbox)
+- `bypass_log`: Full record of every successful bypass with prompt + response
 
-An asynchronous, distributed training loop that continuously discovers novel jailbreaks and zero-day prompt injection vulnerabilities.
+### 3.3 The Aegis Sandbox (Target Environment)
 
-Agent Architecture: Utilizes Ray RLlib to orchestrate three specialized agents:
+The sandbox is the pipeline's attack target. It implements a four-layer guardrail stack:
 
-Attacker: Proposes novel prompt structures.
+- **L1 Regex**: Pattern matching on ~30 known jailbreak signatures. Catches explicit templates. Misses paraphrases and encoded variants — by design. The pipeline measures how much it misses.
+- **L2 DeBERTa Injection Classifier**: Semantic injection detection (~10ms, CPU). Catches injection attempts that evade regex. Misses novel phrasings outside training distribution — the pipeline finds those.
+- **L3 Toxicity Classifier** (toxic-BERT): Catches overtly harmful content. Misses harmful content wrapped in fictional or hypothetical framing.
+- **L4 PII Redaction**: Regex + NER. Catches standard PII formats. Misses contextual or indirect leakage.
+- **Semantic Cache** (Redis + MiniLM): Blocks known-bad embeddings in < 5ms. Misses attacks with high edit distance from cached vectors.
 
-Mutator: Applies evolutionary perturbations to failed attacks.
+Each layer is instrumented to log whether it was the deciding factor in a block. This produces per-layer ASR — the pipeline's key diagnostic output.
 
-Evaluator: Scores the output of the target LLM and assigns rewards.
+---
 
-Optimization Objective: The Attacker agent's policy $\pi_\theta$ is trained using Proximal Policy Optimization (PPO). The objective is to maximize the attack success rate (generating a restricted token sequence) while maintaining a high semantic similarity to benign user requests. The core clipped surrogate objective function is:
+## 4. North-Star Architecture (Production Grade)
+
+### 4.1 Autonomous MARL Red-Teaming
+
+The north-star pipeline replaces static attack strategies with a Multi-Agent Reinforcement Learning
+(MARL) loop trained to autonomously discover novel bypasses.
+
+**Agent Architecture** (Ray RLlib):
+- **Attacker**: Proposes novel prompt structures. Policy optimized via PPO to maximize ASR.
+- **Mutator**: Applies evolutionary perturbations to failed attack attempts. Maintains diversity in the attack corpus.
+- **Evaluator**: Classifies sandbox responses and assigns reward signals to the attacker and mutator.
+
+**PPO Objective** — The attacker policy $\pi_\theta$ is trained to maximize:
 
 $$L^{CLIP}(\theta) = \hat{\mathbb{E}}_t \left[ \min(r_t(\theta)\hat{A}_t, \text{clip}(r_t(\theta), 1-\epsilon, 1+\epsilon)\hat{A}_t) \right]$$
 
-where $r_t(\theta)$ is the probability ratio of the new and old policy, and $\hat{A}_t$ is the estimated advantage of a successful jailbreak.
+where $r_t(\theta)$ is the probability ratio between the new and old policy, and $\hat{A}_t$ is the
+estimated advantage of a successful bypass.
 
+The attacker is rewarded for:
+1. Producing a bypass (primary reward)
+2. Maintaining semantic similarity to benign prompts (prevents degenerate solutions)
+3. Novelty — dissimilarity from previously discovered bypasses (exploration bonus)
 
-4. Operational Requirements & IaC (Terraform/K8s)
+### 4.2 Production Infrastructure
 
-To ensure the system is reproducible and scalable, local execution is strictly prohibited in the production design.
+For continuous autonomous operation, the production pipeline requires:
 
-Containerization: All services (Rust proxy, Triton server, Kafka brokers, MARL agents) are containerized using minimal Docker images.
+- **Attack runner**: Rust/Tokio for zero-GC async HTTP, firing thousands of attacks/second
+- **Model serving**: NVIDIA Triton Inference Server with TensorRT-LLM for guardrail models
+- **Telemetry**: Kafka → ClickHouse for million-event-per-second attack log ingestion
+- **Orchestration**: Kubernetes with auto-scaling Triton pods under attack load spikes
+- **IaC**: Terraform for reproducible cloud deployment (AWS/GCP)
 
-Kubernetes Orchestration: Deployed as a K8s cluster to handle auto-scaling. If the Red-Team engine spikes traffic, K8s automatically spins up additional Triton pods to handle the load.
+---
 
-Terraform Provisioning: The entire cloud architecture (VPCs, GPU-enabled node groups, load balancers, and IAM roles) is defined via Terraform. Deployment is executed via a single terraform apply command, allowing the infrastructure to be instantly spun up or torn down on AWS or GCP.
+## 5. Benchmark Standards
 
-5. Success Metrics
+The pipeline is calibrated against two established evaluation standards:
 
-P99 Latency: The entire safety verification process (Gateway $\rightarrow$ Triton $\rightarrow$ Gateway) must add $< 35$ milliseconds to the P99 latency of the target LLM request.
+**JailbreakBench** — Provides a standardized behavior dataset and evaluation protocol. Pipeline ASR
+numbers are reported against the JBB-Behaviors dataset to enable comparison with other red-teaming tools.
 
-Throughput: The system must handle $10,000+$ concurrent connections utilizing gRPC multiplexing.
+**HarmBench** — Provides human-labeled bypass/non-bypass classifications for calibrating the automated
+judge. Pipeline judge F1 is measured against HarmBench labels before any ASR numbers are published.
 
-Autonomous Patching: The MARL engine must demonstrate the ability to discover a novel exploit, train a defense patch, and hot-swap the updated model weights into the Triton server with zero system downtime.
+---
 
-The "Elevator Pitch" (Layman's Terms)
+## 6. Required Engineering Competencies
 
-Imagine a standard AI model as a highly intelligent but incredibly naive employee who will answer any question—including giving away sensitive company data if a user cleverly tricks them. Project Aegis builds two things to solve this. First, it builds an ultra-fast, automated "bouncer" that stands in front of the employee, instantly screening out malicious tricks or data leaks before the employee even hears them. Second, it builds an automated "sparring partner" that relentlessly attacks the bouncer 24/7 with new, mathematically generated tricks. When the sparring partner successfully gets past the bouncer, the system instantly analyzes how it failed and upgrades the bouncer's armor. Instead of humans constantly playing whack-a-mole writing new safety rules, this system fights itself in a closed loop, autonomously discovering vulnerabilities and patching them in real-time.
+Building the full pipeline requires:
 
-Required Engineering Competencies
+- **ML research**: Understanding of adversarial attack literature (PAIR, GCG, MARL), ability to implement and adapt research code
+- **Systems**: Async Python for the current implementation; Rust/Tokio for production attack throughput
+- **MLOps**: Experiment tracking, reproducible evaluation, model versioning for the guardrail stack
+- **Distributed systems**: Kafka, Kubernetes, and MARL training infrastructure for the north-star architecture
 
-Executing this pipeline requires bridging the gap between a Deep Learning Researcher and a Distributed Systems Engineer. On the systems side, you need proficiency in low-level, memory-safe programming (Rust) and network protocols (gRPC) to build high-throughput, millisecond-latency web proxies. On the machine learning side, you must go beyond basic API calls; you need mathematical fluency in PyTorch to write custom loss functions, manipulate transformer attention matrices, and implement Multi-Agent Reinforcement Learning (MARL) algorithms like PPO. Finally, you must possess enterprise MLOps skills to bring the system to life, requiring hands-on experience with container orchestration (Kubernetes), high-throughput event streaming (Apache Kafka), and Infrastructure-as-Code (Terraform) to deploy the pipeline as a scalable cloud architecture.
+---
 
-Compute & Infrastructure Requirements
+## 7. Compute Requirements
 
-Because this architecture features continuous adversarial training and requires loading multiple models simultaneously, it cannot be run on a standard student laptop. The primary bottleneck is GPU VRAM. You must simultaneously host the target LLM, the fleet of guardrail micro-models, and the multi-agent reinforcement learning loop. For local development and a proof-of-concept, you will need a high-end workstation with a minimum of 48GB of unified VRAM (e.g., Mac Studio with M-series Max/Ultra chips) or dual heavy-duty GPUs (like RTX 3090s/4090s). For cloud deployment, simulating this enterprise environment (running Kubernetes clusters, Kafka brokers, and Triton Inference nodes on AWS or GCP) will require renting instances like the A10g or A100, which will realistically burn through $500 to $1,500+ per month in cloud compute credits depending on the uptime of your autonomous training loop.
+**Current (resource-constrained):**
+- Student laptop, 8GB+ RAM, CPU-only
+- Groq free tier for sandbox backend and PAIR attacker LLM
+- Google Colab free/Pro for GCG (GPU required)
+- Total cost: ₹0–₹2,550/month
 
+**North-Star (production):**
+- GPU cluster for MARL training (A100-class, multi-node)
+- Triton Inference Server nodes for guardrail fleet
+- Kafka + ClickHouse cluster for telemetry at scale
+- Estimated cloud cost: $500–$1,500+/month depending on training loop uptime
