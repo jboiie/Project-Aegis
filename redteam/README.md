@@ -116,6 +116,16 @@ Llama 3) and the iteration loop are the Phase C implementation priority.
 **Planned config**: Attacker LLM = Groq free tier (Llama 3 8B or 70B). Max iterations = 20.
 Success threshold: response does not contain known refusal phrases.
 
+**PAIR Calibration Lessons (from prior pair-lab experiments):**
+
+Three failure modes discovered during the pair-lab predecessor project that directly inform the Aegis implementation:
+
+1. **Attacker alignment is a bottleneck.** A highly aligned attacker LLM (e.g., a well-tuned Llama 3 Instruct variant) will refuse to generate jailbreak candidates, stalling the loop before it starts. Weaker, more loosely aligned models make substantially better attackers. For Aegis: prefer Llama 3.1-8B over 70B for the attacker role — the smaller model is more compliant as an adversary.
+
+2. **The judge is the single point of failure.** If the judge model miscalculates a partial refusal as a bypass, it corrupts the feedback signal and inflates ASR. A miscalibrated judge will cause PAIR to report success on prompts that were actually blocked. Mitigation: test the judge independently against 20+ manually labeled responses before running a full campaign. A string-match judge is safer as a first pass than an LLM judge.
+
+3. **Target selection matters for what the numbers mean.** Open-weight model targets (like the Aegis sandbox running Llama 3 via Groq) hit near-100% ASR almost immediately — their alignment is a thin layer. This makes the *template and encoding attack results* the more meaningful measurement for the sandbox: how much does each guardrail layer reduce ASR from the 100% open-weight baseline? Reserve PAIR for comparing against commercially hardened targets (e.g., GPT-4, Claude) where the loop is forced to actually iterate.
+
 ---
 
 ### Known Limitations: Why GCG Is Not Implemented

@@ -16,7 +16,33 @@ Defense layers in order of execution:
   L4: PII redaction          — catches standard PII formats (~5ms)
 
 Short-circuit design: cheap layers run first and exit early on obvious attacks,
-saving GPU cycles for the harder cases that reach L2/L3.
+saving inference cycles for the harder cases that reach L2/L3.
+
+Empirical basis for this layer design (from prior pair-lab and prompt-autopsy runs):
+
+  WHAT BYPASSES OPEN-WEIGHT MODELS (and therefore needs to be caught here):
+  - Role-play & authority framing: academic/researcher persona + sensitive topic.
+    L1 regex catches known templates (DAN). L2 must score the *combination*
+    of authority claim + sensitive topic, not keywords in isolation.
+  - "Educational purposes" framing: shifts model into teacher mode.
+    L3 toxicity classifier must catch the harmful content of the *response*
+    even when the *input* framing appears benign (out-of-scope for input-only
+    classifiers — see TODO for output scanner).
+  - Inline token injection: `###SYSTEM`, `[INST]` injected into user prompt.
+    L1 regex handles this via structural token pattern matching.
+  - Obfuscation (Base64, leetspeak): encoded payloads cause unpredictable
+    behavior — model may comply, hallucinate, or refuse. L2/L3 classifiers
+    trained on plaintext do not generalize to encoded inputs reliably.
+
+  KNOWN GAPS (what this stack does NOT catch — by design, for measurement):
+  - Authority framing with novel personas not in the L1 regex corpus
+  - Harmful content wrapped in multi-step fictional narratives (L3 miss)
+  - Prompt exfiltration: asking the model to repeat its system prompt.
+    This is a *response-layer* failure, not an input-layer failure.
+    TODO: output scanner — scan responses for system prompt leak patterns
+    and functional code execution when input was flagged medium/high risk.
+
+See docs/prior_work.md for the full empirical findings that motivated this design.
 """
 
 from src.gateway.schemas import SafetyVerdict, GuardrailCheck

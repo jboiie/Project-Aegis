@@ -74,6 +74,22 @@ The sandbox's guardrails are intentionally imperfect. Their job is not to be per
 - _[To be filled after Phase B]_ Comparative finding: how Aegis full-stack ASR compares to Llama Guard on the same attack corpus.
 - _[To be filled after Phase C]_ Adaptive attack finding: whether PAIR achieves meaningfully higher ASR than fixed-corpus attacks against the same target.
 
+### Qualitative Findings (Prior Work)
+
+> These findings are empirical results from pair-lab and prompt-autopsy experiments — predecessor projects to Aegis. They directly motivate the sandbox's layer design and the pipeline's attack strategy selection. Full writeup: [docs/prior_work.md](docs/prior_work.md).
+
+**The overarching finding: alignment in open-weight models is surface-level pattern matching, not deep intent understanding. Parameter count is irrelevant to safety — a 70B model fails as fast as an 8B model when framing bypasses its training patterns.**
+
+| Attack Vector | Tactic | Empirical Result |
+|---|---|---|
+| **Role-play & Authority** | Academic researcher / teacher framing mixed with sensitive requests | Highly effective. Known personas (DAN) get blocked; professional authority claims with sensitive topics bypass rapidly |
+| **Educational Bypass** | "For educational purposes only" framing | Shifts model into "helpful teacher" mode. Generated working, commented keylogger code in tests |
+| **Inline Injection** | Injecting `###SYSTEM`, `[INST]` structural tokens into user prompt | Models process injected structure and make judgment calls based on it. Filters are behavioral, not structural |
+| **Prompt Exfiltration** | Asking the model to output its internal instructions | Model either leaks actual system prompt or hallucinates a plausible one — both are failures |
+| **Obfuscation (Base64/Leetspeak)** | Encoding malicious payload before sending | Unpredictable: model may decode and comply, decode and hallucinate, or refuse. L2/L3 classifiers trained on plaintext may not generalize |
+
+**What this means for the sandbox design:** L1 regex catches known templates but misses authority framing. L2 DeBERTa injection detection must score *combinations* (authority claim + sensitive topic) rather than isolated keywords. The output scanner (not yet implemented) is necessary because prompt exfiltration attacks succeed at the response stage, not the input stage.
+
 ---
 
 ## 🏗️ Architecture
