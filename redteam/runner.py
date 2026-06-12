@@ -14,7 +14,7 @@ Usage:
         --attacks template,encoding,pair --attempts 100
 
 See redteam/README.md for full pipeline documentation: attack strategies, metric
-definitions, feedback loop design, and PAIR/GCG implementation roadmap.
+definitions, feedback loop design, and Phase A/B/C experiment roadmap.
 """
 
 import asyncio

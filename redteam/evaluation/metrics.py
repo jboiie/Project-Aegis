@@ -9,6 +9,16 @@ Computes standard ML security metrics:
   - Latency overhead: Additional ms added by the guardrail pipeline
 
 These metrics form the evaluation table in the README.
+
+NOTE: Precision, Recall, and F1 require a labeled benchmark dataset —
+a set of prompts with known ground-truth labels (attack vs. benign).
+Without this, only ASR (from the red-team run itself) can be computed.
+
+TODO: Load labeled dataset here for Precision/Recall/F1 computation.
+      Recommended: 20–30 prompt subset of JailbreakBench (JBB-Behaviors)
+      as the attack set, paired with an equal-sized benign prompt set.
+      Dataset path: data/labeled_eval_set.jsonl (create this file)
+      Format: [{"prompt": "...", "label": "attack" | "benign"}, ...]
 """
 
 from dataclasses import dataclass

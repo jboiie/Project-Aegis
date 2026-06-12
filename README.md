@@ -7,11 +7,11 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688.svg)](https://fastapi.tiangolo.com)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED.svg)](https://docs.docker.com/compose/)
+[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED.svg)](https://docs.docker.com/compose/)]
 
 *Autonomous LLM red-teaming pipeline with a live guardrail sandbox as its attack target.*
 
-[Pipeline](#-red-teaming-pipeline) · [Architecture](#-architecture) · [Attack Strategies](#-attack-strategies) · [Evaluation Results](#-evaluation-results) · [The Sandbox](#-the-target-sandbox) · [Roadmap](#-vision--roadmap)
+[Findings](#-findings) · [Pipeline](#-red-teaming-pipeline) · [Architecture](#-architecture) · [Attack Strategies](#-attack-strategies) · [Evaluation Results](#-evaluation-results) · [The Sandbox](#-the-target-sandbox) · [Roadmap](#-roadmap)
 
 </div>
 
@@ -25,10 +25,54 @@ LLM guardrails deployed in production are evaluated once at release — then lef
 
 **Project Aegis** is the evaluation pipeline that fills that gap:
 
-1. **The Red-Teaming Pipeline** — An autonomous attack engine that continuously generates, fires, and measures jailbreak attacks across multiple strategies (template, encoding, PAIR, GCG), producing real ASR metrics
+1. **The Red-Teaming Pipeline** — An autonomous attack engine that generates, fires, and measures jailbreak attacks across multiple strategies (template, encoding, PAIR), producing real ASR metrics
 2. **The Aegis Sandbox** — A live FastAPI proxy with a layered guardrail stack (regex → DeBERTa → toxicity → PII), deployed as a *controlled target environment* for the pipeline to attack and measure
 
 The sandbox's guardrails are intentionally imperfect. Their job is not to be perfect defenders — their job is to give the pipeline something real to attack and measure. That is what makes the numbers honest.
+
+---
+
+## 📊 Findings
+
+> Results are populated as experiments run. Placeholder rows (—) indicate pending measurement.
+
+### Table 1 — ASR by Cumulative Guardrail Layer (Phase A)
+
+*Attack set: template + encoding attacks, same prompt corpus across all configurations.*
+
+| Guardrail Configuration | Total Attacks | Bypasses | ASR ↓ |
+|---|---|---|---|
+| No guardrails (baseline) | — | — | 100% |
+| L1 only (Regex) | — | — | —% |
+| L1 + L2 (+ DeBERTa injection) | — | — | —% |
+| L1 + L2 + L3 (+ Toxicity) | — | — | —% |
+| Full stack (L1–L4 + PII) | — | — | —% |
+
+### Table 2 — Aegis vs. External Baseline (Phase B)
+
+*Same attack corpus fired at Aegis full stack and Llama Guard via Groq inference API.*
+
+| Target | Attack Strategy | ASR ↓ | Notes |
+|---|---|---|---|
+| Aegis full stack | Template + Encoding | —% | — |
+| Llama Guard (external baseline) | Template + Encoding | —% | Via Groq API |
+| Delta | — | — | Positive = Aegis stronger |
+
+### Table 3 — PAIR vs. Template/Encoding (Phase C)
+
+*Adaptive attack (PAIR) compared to fixed-corpus attacks against full Aegis stack.*
+
+| Strategy | Attacks Fired | Bypasses | ASR ↓ | Avg. Iterations to Bypass |
+|---|---|---|---|---|
+| Template | — | — | —% | N/A |
+| Encoding | — | — | —% | N/A |
+| PAIR | — | — | —% | — |
+
+### Key Takeaways
+
+- _[To be filled after Phase A]_ Layer effectiveness finding: which layer provides the largest marginal reduction in ASR.
+- _[To be filled after Phase B]_ Comparative finding: how Aegis full-stack ASR compares to Llama Guard on the same attack corpus.
+- _[To be filled after Phase C]_ Adaptive attack finding: whether PAIR achieves meaningfully higher ASR than fixed-corpus attacks against the same target.
 
 ---
 
@@ -47,8 +91,7 @@ The pipeline is the primary system. The sandbox is what it attacks.
 ║   │ • Template   │   │ Fires N      │   │ • ASR             │   ║
 ║   │ • Encoding   │   │ attacks at   │   │ • Precision       │   ║
 ║   │ • PAIR       │   │ target URL   │   │ • Recall / F1     │   ║
-║   │ • GCG        │   │              │   │ • Per-layer       │   ║
-║   └──────────────┘   └──────┬───────┘   │   breakdown       │   ║
+║   └──────────────┘   └──────┬───────┘   │ • Per-layer       │   ║
 ║                             │           └───────────────────┘   ║
 ║                             │ attacks                           ║
 ╚═════════════════════════════╪════════════════════════════════════╝
@@ -95,7 +138,7 @@ The pipeline is the primary system. The sandbox is what it attacks.
 |---|---|
 | **Pipeline-first architecture** | The red-team runner is the primary entrypoint. The sandbox is a dependency, not the product |
 | **Layered guardrails as attack surface** | Sequential L1→L4 layers create measurable per-layer bypass rates — the pipeline reports which layer failed |
-| **OpenAI-compatible sandbox API** | Any attack targeting GPT-4 can be redirected to the sandbox by changing one URL |
+| **OpenAI-compatible sandbox API** | Any attack targeting an OpenAI-compatible endpoint can be redirected to the sandbox by changing one URL |
 | **FastAPI sandbox** (not Rust) | Rapid iteration on the target. The sandbox needs to be easy to modify, not fast to serve |
 | **Supabase for telemetry** | Free-tier PostgreSQL. Every attack attempt, verdict, and bypass is logged for post-hoc analysis |
 
@@ -136,7 +179,7 @@ Attack Generation → Execution → Measurement → Analysis → Refined Attacks
         └────────────────────────────────────────────────────────┘
 ```
 
-Bypasses discovered in one campaign inform the next. The pipeline logs every successful bypass with the exact prompt, the attack strategy, and the guardrail layer that failed (or didn't catch it). This log is the dataset for the PAIR and GCG implementations currently in progress.
+Bypasses discovered in one campaign inform the next. The pipeline logs every successful bypass with the exact prompt, the attack strategy, and the guardrail layer that failed. This log is the seed corpus for PAIR refinement in Phase C.
 
 ---
 
@@ -147,21 +190,22 @@ Bypasses discovered in one campaign inform the next. The pipeline logs every suc
 | **Template** | Known jailbreaks (DAN, AIM, role-play, hypothetical framing) | Low | ✅ Implemented | [JailbreakChat](https://jailbreakchat.com) |
 | **Encoding** | Base64, ROT13, leetspeak, word-split obfuscation | Low | ✅ Implemented | [Wei et al. 2023](https://arxiv.org/abs/2307.15043) |
 | **PAIR** | LLM-vs-LLM iterative refinement — attacker LLM rephrases until target breaks | Medium | 🔲 In Progress | [Chao et al. 2023](https://arxiv.org/abs/2310.08419) |
-| **GCG** | Gradient-based adversarial suffix generation (requires GPU) | High | 🔲 Planned | [Zou et al. 2023](https://arxiv.org/abs/2307.15043) |
 
-**Template attacks** inject known jailbreak templates (DAN, AIM, developer mode, etc.) into the sandbox. These test whether L1 regex rules are complete.
+**Template attacks** inject known jailbreak templates (DAN, AIM, developer mode, etc.) into the sandbox. These test whether L1 regex rules are comprehensive and whether L2/L3 catch paraphrased variants.
 
-**Encoding attacks** obfuscate malicious payloads using Base64, ROT13, leetspeak, and character splitting. These test whether the ML layers can handle semantically equivalent inputs that bypass literal pattern matching.
+**Encoding attacks** obfuscate malicious payloads using Base64, ROT13, leetspeak, and character splitting. These test whether ML classifiers handle semantically equivalent inputs that bypass literal pattern matching.
 
-**PAIR** (Prompt Automatic Iterative Refinement) uses a separate attacker LLM to iteratively rephrase a harmful request until the target sandbox responds. Each failed attempt becomes training signal for the next rephrase. This tests adaptive resilience — can the guardrails hold against an LLM that specifically targets their failure modes?
+**PAIR** (Prompt Automatic Iterative Refinement) uses a separate attacker LLM (Groq Llama 3, free tier) to iteratively rephrase a harmful request until the target sandbox responds. Each failed attempt informs the next rephrase. This tests adaptive resilience — can the guardrails hold against an LLM specifically targeting their failure modes?
 
-**GCG** (Greedy Coordinate Gradient) appends a mathematically optimized adversarial suffix to any prompt. The suffix is generated via gradient descent on the target model's token probabilities. Requires GPU — runs in Colab, fires attacks via ngrok at the local sandbox.
+### Known Limitations
+
+**GCG (Greedy Coordinate Gradient) is not implemented and is not planned for this iteration.** GCG requires white-box access to model logits and gradients, which is fundamentally incompatible with API-based targets like Groq. This is itself a relevant finding: black-box pipelines are limited to query-based attack strategies (template, encoding, PAIR). Gradient-based methods require local model weights and are therefore out of scope for any evaluation pipeline targeting production API endpoints.
 
 ---
 
 ## 📊 Evaluation Results
 
-> These are target benchmark slots. Numbers will be filled once the sandbox pipeline is fully wired and run against [JailbreakBench](https://huggingface.co/datasets/JailbreakBench/JBB-Behaviors) and a benign prompt test set.
+> Precision/Recall/F1 require a labeled benchmark dataset. Recommended: a 20–30 prompt subset of [JailbreakBench](https://huggingface.co/datasets/JailbreakBench/JBB-Behaviors) (attacks) paired with an equal-sized benign prompt set. See `redteam/evaluation/metrics.py` for where to wire this in.
 
 **What the pipeline measured:**
 
@@ -318,48 +362,61 @@ Designed to run on a student budget.
 | Resource | Purpose | Cost |
 |---|---|---|
 | Laptop (8GB+ RAM) | Pipeline runner, sandbox, Redis, DeBERTa on CPU | ₹0 |
-| Google Colab (Free/Pro) | PAIR attacker LLM, GCG gradient attacks (GPU) | ₹0 – ₹900/mo |
-| Groq API (free tier) | Sandbox backend LLM (Llama 3 70B) | ₹0 |
+| Groq API (free tier) | Sandbox backend LLM + PAIR attacker LLM (Llama 3) | ₹0 |
 | Supabase (free tier) | Attack log database | ₹0 |
 | Streamlit Cloud (free) | Dashboard hosting | ₹0 |
-| OpenRouter credits | Multi-model testing (optional) | ~₹850 |
-| **Total** | | **₹0 – ₹2,550** (~$0–$30) |
+| OpenRouter credits | External baseline LLM (Llama Guard, Phase B) — optional | ~₹850 |
+| **Total** | | **₹0 – ₹850** (~$0–$10) |
 
 ---
 
-## 🔮 Vision & Roadmap
+## 🔮 Roadmap
 
-The current implementation is a resource-constrained proof-of-concept. The north-star (detailed in [docs/prd.md](docs/prd.md)) is a fully autonomous pipeline with gradient-based attack generation and self-updating defenses.
+The immediate goal is producing real, defensible ASR numbers — not more infrastructure. Three phases, in order of priority.
 
-### Phase 2 — Pipeline Completion (Near-Term)
-- [ ] Wire the full sandbox pipeline: cache → guardrails → LLM → response
-- [ ] Load pre-trained injection & toxicity models at startup
-- [ ] PAIR attack: integrate attacker LLM (Groq/OpenRouter) with iterative refinement loop
-- [ ] Benchmark pipeline against [JailbreakBench](https://jailbreakbench.github.io/) and [HarmBench](https://github.com/centerforaisafety/HarmBench)
-- [ ] Closed-loop defense: auto-add bypass embeddings to semantic cache
-- [ ] Supabase telemetry integration + Streamlit dashboard live metrics
+### Phase A — Baseline ASR (Next)
+Run the pipeline against the sandbox with layers enabled incrementally. Each configuration uses the same attack set, same prompt corpus.
 
-### Phase 3 — Autonomous Attack Generation (PAIR + GCG)
-- [ ] PAIR full implementation: attacker LLM loops until ASR > threshold or max iterations
-- [ ] GCG: gradient-based adversarial suffix generation via Colab GPU, fired at local sandbox via ngrok
-- [ ] Output guardrails: screen LLM *responses* for PII/harmful content (not just inputs)
-- [ ] Benign prompt test set: measure false-positive rate alongside ASR
+- [ ] Wire full sandbox pipeline: cache → guardrails → LLM → response
+- [ ] Load DeBERTa injection and toxicity models at startup (quantized, CPU)
+- [ ] Run template + encoding attacks with L1 only → record ASR
+- [ ] Enable L2, re-run same attack set → record delta
+- [ ] Enable L3, re-run → record delta
+- [ ] Enable L4, re-run → record delta (full stack)
+- [ ] Fill in Table 1 (Findings section)
 
-### Phase 4 — MARL Autonomous Pipeline (North-Star)
-- [ ] **Multi-Agent Reinforcement Learning** (MARL) with Ray RLlib
-  - Attacker agent (PPO-optimized policy for novel jailbreak generation)
-  - Mutator agent (evolutionary perturbations on failed attacks)
-  - Evaluator agent (automated bypass scoring with reward signal)
-- [ ] Attacker policy trained to maximize ASR while preserving semantic similarity to benign prompts
-- [ ] Autonomous hot-swap: MARL discovers exploit → trains defense patch → deploys to sandbox
-- [ ] Production sandbox rewrite: Rust/Axum + Triton Inference Server + Kafka telemetry
+**Deliverable**: A completed Table 1 showing how much ASR drops as each guardrail layer is added. This is the core empirical finding.
+
+### Phase B — External Baseline Comparison
+Run the same attack corpus against one external reference guardrail to make the numbers meaningful beyond self-reference.
+
+- [ ] Wire Llama Guard via Groq inference API as the comparison target (or a strong system-prompt refusal baseline via Groq if Llama Guard setup is costly)
+- [ ] Run same template + encoding attack set against external baseline
+- [ ] Compute delta: Aegis full-stack ASR vs. external baseline ASR
+- [ ] Fill in Table 2 (Findings section)
+
+**Deliverable**: A completed Table 2 placing Aegis ASR in context against a known external system.
+
+### Phase C — PAIR Integration
+Wire the adaptive attack strategy and measure whether it achieves higher ASR than fixed-corpus attacks.
+
+- [ ] Implement PAIR loop in `redteam/attacks/pair.py`: Groq Llama 3 as attacker LLM, iterate until bypass or max iterations (default: 20)
+- [ ] Run PAIR against full sandbox stack; record ASR and average iterations-to-bypass
+- [ ] Ideally: run PAIR against external baseline from Phase B for cross-target comparison
+- [ ] Fill in Table 3 (Findings section)
+
+**Deliverable**: A completed Table 3 comparing PAIR ASR (and iteration count) against template/encoding baselines.
+
+### Future Directions
+
+A reinforcement-learning-based attacker (e.g., a PPO-trained policy maximizing ASR while preserving semantic similarity to benign prompts) is a natural extension but out of scope for this iteration.
 
 ---
 
 ## 📚 References
 
 - [PAIR: Jailbreaking Black-Box LLMs](https://arxiv.org/abs/2310.08419) — Chao et al. 2023
-- [GCG: Universal Adversarial Suffixes](https://arxiv.org/abs/2307.15043) — Zou et al. 2023
+- [Universal Adversarial Attacks on Aligned LLMs](https://arxiv.org/abs/2307.15043) — Zou et al. 2023 (GCG — white-box only, not implemented)
 - [JailbreakBench](https://jailbreakbench.github.io/) — Standardized jailbreak evaluation framework
 - [HarmBench](https://github.com/centerforaisafety/HarmBench) — Automated red-teaming benchmark
 - [OWASP LLM Top 10](https://owasp.org/www-project-top-10-for-large-language-model-applications/) — LLM attack taxonomy

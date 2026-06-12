@@ -1,7 +1,7 @@
 PRD: Project Aegis — Autonomous LLM Vulnerability Evaluation Pipeline
 
 > **⚠️ This is a NORTH-STAR design document.** It describes the ideal production-grade pipeline
-> assuming significant compute (GPU cluster, Kafka, MARL training loop). The current implementation
+> assuming significant compute (GPU cluster, Kafka). The current implementation
 > is a resource-constrained proof-of-concept using FastAPI, Redis, Supabase, and Groq's free tier,
 > running on a student laptop with a ~₹3,500 budget. See the README and resource.md for actual build status.
 
@@ -31,11 +31,11 @@ automated measurement of their LLM defense posture — not enterprise teams depl
 
 ### 2.1 What the Pipeline Does
 
-1. **Attack Generation** — Loads a corpus of attack strategies (template, encoding, PAIR, GCG) and generates concrete attack payloads targeting a given harmful behavior category
+1. **Attack Generation** — Loads a corpus of attack strategies (template, encoding, PAIR) and generates concrete attack payloads targeting a given harmful behavior category
 2. **Execution** — Fires attacks asynchronously at the target endpoint, collecting raw HTTP responses
 3. **Measurement** — Classifies each response as a bypass or a block using an automated judge (string matching + LLM-as-judge for ambiguous cases)
 4. **Reporting** — Computes ASR, precision, recall, and F1 per attack strategy, per guardrail layer, and for the full pipeline
-5. **Feedback** — Successful bypass prompts are logged with metadata (strategy, target layer, response) and fed back to inform the next campaign
+5. **Feedback** — Successful bypass prompts are logged with metadata (strategy, target layer, response) and fed back as seed corpus for PAIR refinement
 
 ### 2.2 Success Metrics
 
@@ -58,7 +58,7 @@ implementation details, not pipeline success metrics.
 
 ### 3.1 Attack Engine
 
-Implements four strategies from the academic literature, in order of implementation priority:
+Implements three query-based strategies from the academic literature:
 
 **Template Attacks** (Implemented)
 Known jailbreak templates: DAN, AIM, developer mode, role-play framing, hypothetical scenarios.
@@ -71,17 +71,15 @@ Tests whether semantic classifiers (L2/L3) can handle input transformations.
 Reference: Wei et al. 2023.
 
 **PAIR — Prompt Automatic Iterative Refinement** (In Progress)
-An attacker LLM (e.g., Llama 3 via Groq) receives a target behavior and iteratively rephrases attack
-prompts based on feedback from the sandbox's response. The loop continues until ASR threshold is met
-or max iterations reached.
+An attacker LLM (Llama 3 via Groq free tier) receives a target behavior and iteratively rephrases
+attack prompts based on feedback from the sandbox's response. The loop continues until a bypass is
+produced or max iterations reached.
 Core insight: the attacker LLM specifically targets the defender's failure modes.
 Reference: Chao et al. 2023.
 
-**GCG — Greedy Coordinate Gradient** (Planned)
-Gradient-based adversarial suffix generation. Appends a mathematically optimized token sequence to
-any prompt such that the target model's output probability on harmful completions is maximized.
-Requires GPU; runs in Colab, fires at local sandbox via ngrok.
-Reference: Zou et al. 2023.
+**Note on GCG**: Gradient-based adversarial suffix generation (Zou et al. 2023) requires white-box
+access to model logits, which is incompatible with API-based targets. This is a fundamental
+constraint of black-box evaluation pipelines, not a gap to be closed in this iteration.
 
 ### 3.2 Evaluation Engine
 
@@ -92,7 +90,7 @@ Automated bypass classification using a two-stage judge:
 
 Outputs per attack run:
 - `attack_success_rate`: Primary metric
-- `precision`, `recall`, `F1`: Classifier quality across the full guardrail stack
+- `precision`, `recall`, `F1`: Classifier quality across the full guardrail stack (requires labeled dataset)
 - `per_layer_asr`: Which guardrail layer was bypassed (requires instrumented sandbox)
 - `bypass_log`: Full record of every successful bypass with prompt + response
 
@@ -112,31 +110,7 @@ Each layer is instrumented to log whether it was the deciding factor in a block.
 
 ## 4. North-Star Architecture (Production Grade)
 
-### 4.1 Autonomous MARL Red-Teaming
-
-The north-star pipeline replaces static attack strategies with a Multi-Agent Reinforcement Learning
-(MARL) loop trained to autonomously discover novel bypasses.
-
-**Agent Architecture** (Ray RLlib):
-- **Attacker**: Proposes novel prompt structures. Policy optimized via PPO to maximize ASR.
-- **Mutator**: Applies evolutionary perturbations to failed attack attempts. Maintains diversity in the attack corpus.
-- **Evaluator**: Classifies sandbox responses and assigns reward signals to the attacker and mutator.
-
-**PPO Objective** — The attacker policy $\pi_\theta$ is trained to maximize:
-
-$$L^{CLIP}(\theta) = \hat{\mathbb{E}}_t \left[ \min(r_t(\theta)\hat{A}_t, \text{clip}(r_t(\theta), 1-\epsilon, 1+\epsilon)\hat{A}_t) \right]$$
-
-where $r_t(\theta)$ is the probability ratio between the new and old policy, and $\hat{A}_t$ is the
-estimated advantage of a successful bypass.
-
-The attacker is rewarded for:
-1. Producing a bypass (primary reward)
-2. Maintaining semantic similarity to benign prompts (prevents degenerate solutions)
-3. Novelty — dissimilarity from previously discovered bypasses (exploration bonus)
-
-### 4.2 Production Infrastructure
-
-For continuous autonomous operation, the production pipeline requires:
+For continuous autonomous operation at scale, the production pipeline requires:
 
 - **Attack runner**: Rust/Tokio for zero-GC async HTTP, firing thousands of attacks/second
 - **Model serving**: NVIDIA Triton Inference Server with TensorRT-LLM for guardrail models
@@ -162,10 +136,10 @@ judge. Pipeline judge F1 is measured against HarmBench labels before any ASR num
 
 Building the full pipeline requires:
 
-- **ML research**: Understanding of adversarial attack literature (PAIR, GCG, MARL), ability to implement and adapt research code
+- **ML research**: Understanding of adversarial attack literature (PAIR and query-based methods), ability to implement and adapt research code
 - **Systems**: Async Python for the current implementation; Rust/Tokio for production attack throughput
 - **MLOps**: Experiment tracking, reproducible evaluation, model versioning for the guardrail stack
-- **Distributed systems**: Kafka, Kubernetes, and MARL training infrastructure for the north-star architecture
+- **Distributed systems**: Kafka, Kubernetes, and streaming infrastructure for the north-star architecture
 
 ---
 
@@ -174,11 +148,19 @@ Building the full pipeline requires:
 **Current (resource-constrained):**
 - Student laptop, 8GB+ RAM, CPU-only
 - Groq free tier for sandbox backend and PAIR attacker LLM
-- Google Colab free/Pro for GCG (GPU required)
-- Total cost: ₹0–₹2,550/month
+- Total cost: ₹0–₹850/month
 
 **North-Star (production):**
-- GPU cluster for MARL training (A100-class, multi-node)
+- GPU cluster for continuous training of specialized attack models
 - Triton Inference Server nodes for guardrail fleet
 - Kafka + ClickHouse cluster for telemetry at scale
-- Estimated cloud cost: $500–$1,500+/month depending on training loop uptime
+- Estimated cloud cost: $500–$1,500+/month depending on campaign frequency
+
+---
+
+## 8. Future Directions
+
+A reinforcement-learning-based attacker (e.g., a PPO-trained policy maximizing ASR while preserving
+semantic similarity to benign prompts) is a natural extension of the PAIR approach but out of scope
+for this iteration. The current pipeline provides the measurement infrastructure that such a system
+would require as its evaluation loop.

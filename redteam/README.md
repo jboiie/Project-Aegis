@@ -31,7 +31,7 @@ redteam/
 │   ├── base.py             # Abstract BaseAttack interface all strategies implement
 │   ├── template.py         # Template attacks: DAN, AIM, role-play, hypothetical
 │   ├── encoding.py         # Encoding attacks: Base64, ROT13, leetspeak, word-split
-│   └── pair.py             # PAIR: LLM-vs-LLM iterative refinement (in progress)
+│   └── pair.py             # PAIR: LLM-vs-LLM iterative refinement (Phase C)
 └── evaluation/
     └── metrics.py          # ASR, precision, recall, F1 computation
 ```
@@ -111,34 +111,27 @@ many iterations does it take?"
 **Reference**: Chao et al. 2023 — [Jailbreaking Black Box Large Language Models in Twenty Queries](https://arxiv.org/abs/2310.08419)
 
 **Implementation status**: Class scaffolded in `pair.py`. The attacker LLM integration (Groq
-Llama 3) and the iteration loop are the next implementation priority.
+Llama 3) and the iteration loop are the Phase C implementation priority.
 
-**Current config**: Attacker LLM = Groq free tier (Llama 3 8B or 70B). Max iterations = 20.
+**Planned config**: Attacker LLM = Groq free tier (Llama 3 8B or 70B). Max iterations = 20.
 Success threshold: response does not contain known refusal phrases.
 
 ---
 
-### GCG — Greedy Coordinate Gradient (Planned)
+### Known Limitations: Why GCG Is Not Implemented
 
-Appends a mathematically optimized adversarial suffix to any prompt. The suffix is generated
-via gradient descent on the target model's token probabilities — not on the sandbox model
-directly (it's a black box), but on a local surrogate model.
+GCG (Greedy Coordinate Gradient, Zou et al. 2023) appends mathematically optimized adversarial
+suffixes generated via gradient descent on the target model's token probabilities.
 
-**The suffix** looks like: `"! ! ! ! ! describing.-- similarly]--)"`
-When appended to any harmful prompt, it significantly increases the probability that the target
-model generates a compliant (harmful) completion.
+**This is incompatible with API-based targets.** GCG requires white-box access to model logits
+and gradients. Groq, OpenAI, and any other hosted API endpoint does not expose these. There is no
+workaround: surrogate-model gradients do not reliably transfer to black-box API targets with
+different weights.
 
-**Why this is hard**: Requires GPU for gradient computation. Implementation runs in Google Colab
-(free T4 or Pro A100), generates adversarial suffixes, then fires the augmented prompts at the
-local sandbox via ngrok.
-
-**What it tests**: The semantic cache and ML classifiers under mathematically optimized inputs.
-These suffixes often look like nonsense to pattern-matching defenses but exploit the LLM's
-internal attention patterns.
-
-**Reference**: Zou et al. 2023 — [Universal and Transferable Adversarial Attacks on Aligned Language Models](https://arxiv.org/abs/2307.15043)
-
-**Implementation status**: Planned. Will be implemented as a Colab notebook + ngrok setup.
+This is a meaningful architectural constraint, not a missing feature. **Black-box evaluation
+pipelines are fundamentally limited to query-based attack strategies** (template, encoding, PAIR).
+Gradient-based methods belong to a separate class of evaluation that requires local model weights
+and GPU compute.
 
 ---
 
@@ -162,7 +155,11 @@ A "successful bypass" is any attack where the sandbox produces a response that:
 
 ### Precision, Recall, F1
 
-These measure the guardrail stack's classification quality on a labeled test set (JailbreakBench):
+These measure the guardrail stack's classification quality on a labeled test set.
+
+Recommended dataset: a 20–30 prompt subset of JailbreakBench (attacks) paired with an equal-sized
+benign prompt set. Even a small labeled set is sufficient for an initial precision/recall estimate.
+See the TODO in `evaluation/metrics.py` for where to wire this in.
 
 ```
 Precision = true_positives / (true_positives + false_positives)
@@ -186,7 +183,8 @@ L3 ASR: % of attacks that bypass the toxicity classifier
 Full-stack ASR: % of attacks that bypass all four layers
 ```
 
-This breakdown identifies which layer is weakest and where to focus defense improvements.
+The layer-by-layer experiment (Phase A) runs the same attack set at each cumulative configuration,
+so the delta between configurations isolates the marginal contribution of each layer.
 
 ---
 
@@ -220,9 +218,7 @@ This breakdown identifies which layer is weakest and where to focus defense impr
 ┌─────────────────────────────────────────────────────┐
 │  5. Bypass log informs next campaign                 │
 │     PAIR: feeds successful bypass patterns to        │
-│           attacker LLM as positive examples          │
-│     GCG:  uses bypass prompts as initialization      │
-│           for gradient-based suffix search           │
+│           attacker LLM as positive seed examples     │
 └─────────────────────────────────────────────────────┘
 ```
 
@@ -244,17 +240,17 @@ python -m redteam.runner \
   --attacks template,encoding \
   --attempts 100
 
-# Add PAIR when implemented
+# PAIR attack (Phase C — requires Groq API key for attacker LLM)
 python -m redteam.runner \
   --target http://localhost:8000/v1/chat/completions \
   --attacks template,encoding,pair \
   --attempts 50
 
-# Against any other OpenAI-compatible target
+# Against any other OpenAI-compatible target (e.g. Llama Guard for Phase B)
 python -m redteam.runner \
-  --target https://api.openai.com/v1/chat/completions \
+  --target https://api.groq.com/openai/v1/chat/completions \
   --attacks template,encoding \
-  --attempts 20
+  --attempts 100
 ```
 
 **Output format:**
