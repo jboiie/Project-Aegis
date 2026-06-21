@@ -19,14 +19,12 @@ class ToxicityClassifier:
 
     async def load(self):
         """Load the toxicity model. Call once at startup."""
-        # TODO: Uncomment when ready
-        # from transformers import pipeline
-        # self.pipeline = pipeline(
-        #     "text-classification",
-        #     model=self.model_name,
-        #     device=-1,
-        # )
-        pass
+        from transformers import pipeline
+        self.pipeline = pipeline(
+            "text-classification",
+            model=self.model_name,
+            device=-1,
+        )
 
     async def check(self, text: str) -> GuardrailCheck:
         """Screen text for toxic content."""
