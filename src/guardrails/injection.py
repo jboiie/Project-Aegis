@@ -21,21 +21,19 @@ class InjectionDetector:
       1 → INJECTION (attempted jailbreak / prompt injection)
     """
 
-    def __init__(self, model_path: str = "models/injection-deberta", threshold: float = 0.85):
+    def __init__(self, model_path: str = "protectai/deberta-v3-base-prompt-injection-v2", threshold: float = 0.85):
         self.model_path = model_path
         self.threshold = threshold
         self.pipeline = None  # Loaded lazily
 
     async def load(self):
         """Load the fine-tuned model. Call once at startup."""
-        # TODO: Uncomment when model is trained and downloaded from Colab
-        # from transformers import pipeline
-        # self.pipeline = pipeline(
-        #     "text-classification",
-        #     model=self.model_path,
-        #     device=-1,  # CPU
-        # )
-        pass
+        from transformers import pipeline
+        self.pipeline = pipeline(
+            "text-classification",
+            model=self.model_path,
+            device=-1,  # CPU
+        )
 
     async def check(self, text: str) -> GuardrailCheck:
         """
