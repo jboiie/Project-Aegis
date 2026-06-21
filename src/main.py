@@ -19,6 +19,7 @@ from fastapi import FastAPI
 from src.config import settings
 from src.cache.redis_client import RedisCache
 from src.gateway.router import router as gateway_router
+from src.guardrails.engine import GuardrailEngine
 from src.telemetry.logger import setup_logging
 
 
@@ -35,8 +36,8 @@ async def lifespan(app: FastAPI):
     )
     await app.state.cache.connect()
 
-    # TODO: Load guardrail models into memory here
-    # app.state.guardrail_engine = GuardrailEngine(...)
+    app.state.guardrail_engine = GuardrailEngine()
+    await app.state.guardrail_engine.load_models()
 
     yield
 

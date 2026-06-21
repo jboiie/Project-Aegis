@@ -9,7 +9,6 @@ with zero code changes.
 from fastapi import APIRouter, Request
 from src.gateway.schemas import ChatRequest, ChatResponse
 from src.gateway.proxy import forward_to_llm
-from src.guardrails.engine import GuardrailEngine
 
 router = APIRouter(tags=["gateway"])
 
@@ -29,8 +28,7 @@ async def chat_completions(request: ChatRequest, raw_request: Request):
     """
     prompt = request.messages[-1].content
 
-    # TODO (Step 4): use app.state.guardrail_engine instead of per-request init
-    engine = GuardrailEngine()
+    engine = raw_request.app.state.guardrail_engine
     verdict = await engine.screen(prompt)
     if not verdict.passed:
         return ChatResponse.blocked(verdict)
