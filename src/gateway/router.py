@@ -7,8 +7,9 @@ with zero code changes.
 """
 
 from fastapi import APIRouter, Request
-from src.gateway.schemas import ChatRequest, ChatResponse, SafetyVerdict
+from src.gateway.schemas import ChatRequest, ChatResponse
 from src.gateway.proxy import forward_to_llm
+from src.guardrails.engine import GuardrailEngine
 
 router = APIRouter(tags=["gateway"])
 
@@ -26,30 +27,23 @@ async def chat_completions(request: ChatRequest, raw_request: Request):
       5. Log everything to telemetry
       6. Return response to user
     """
-    # TODO: Step 1 — Semantic cache lookup
-    # cache = raw_request.app.state.cache
-    # cached_verdict = await cache.check_similarity(request.messages[-1].content)
-    # if cached_verdict and cached_verdict.blocked:
-    #     return ChatResponse.blocked(cached_verdict)
+    prompt = request.messages[-1].content
 
-    # TODO: Step 2 — Input guardrails
-    # verdict = await guardrail_engine.screen(request.messages[-1].content)
-    # if verdict.blocked:
-    #     await telemetry.log_blocked(request, verdict)
-    #     return ChatResponse.blocked(verdict)
+    # TODO (Step 4): use app.state.guardrail_engine instead of per-request init
+    engine = GuardrailEngine()
+    verdict = await engine.screen(prompt)
+    if not verdict.passed:
+        return ChatResponse.blocked(verdict)
 
-    # TODO: Step 3 — Forward to target LLM
-    # llm_response = await forward_to_llm(request)
+    # TODO: semantic cache lookup (not yet wired)
+    # TODO: output guardrails (not yet wired)
+    # TODO: telemetry logging (not yet wired)
 
-    # TODO: Step 4 — Output guardrails
-    # output_verdict = await guardrail_engine.screen_output(llm_response)
+    llm_response = await forward_to_llm(request)
+    content = llm_response["choices"][0]["message"]["content"]
 
-    # TODO: Step 5 — Telemetry
-    # await telemetry.log_request(request, llm_response, verdict)
-
-    # Placeholder response until pipeline is wired
     return ChatResponse(
-        content="[Aegis] Pipeline not yet wired. See TODOs in gateway/router.py",
+        content=content,
         model=request.model,
-        safety=SafetyVerdict(passed=True, checks=[]),
+        safety=verdict,
     )
