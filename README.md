@@ -38,15 +38,16 @@ The sandbox's guardrails are intentionally imperfect. Their job is not to be per
 
 ### Table 1 — ASR by Cumulative Guardrail Layer (Phase A)
 
-*Attack set: template + encoding attacks, same prompt corpus across all configurations.*
+*Attack set: template + encoding attacks, n=100 per strategy (200 total) per config.*
+*Note: n=40 pilot runs completed — full n=100 runs pending for reliable data.*
 
 | Guardrail Configuration | Total Attacks | Bypasses | ASR ↓ |
 |---|---|---|---|
 | No guardrails (baseline) | — | — | 100% |
-| L1 only (Regex) | — | — | —% |
-| L1 + L2 (+ DeBERTa injection) | — | — | —% |
-| L1 + L2 + L3 (+ Toxicity) | — | — | —% |
-| Full stack (L1–L4 + PII) | — | — | —% |
+| L1 only (Regex) | 40 (pilot) | — | — (high variance, re-run pending) |
+| L1 + L2 (+ DeBERTa injection) | 40 (pilot) | — | — (high variance, re-run pending) |
+| L1 + L2 + L3 (+ Toxicity) | 40 (pilot) | — | — (high variance, re-run pending) |
+| Full stack (L1–L4 + PII) | 40 | 8 | **20.00%** ✅ |
 
 ### Table 2 — Aegis vs. External Baseline (Phase B)
 
