@@ -34,6 +34,14 @@ class Settings(BaseSettings):
     PORT: int = 8000
     LOG_LEVEL: str = "info"
 
+    # ── Experiment: Layer ablation ───────────────────────────
+    # Set to a subset to disable layers. Examples:
+    #   GUARDRAIL_LAYERS=L1            (regex only)
+    #   GUARDRAIL_LAYERS=L1,L2        (+ DeBERTa)
+    #   GUARDRAIL_LAYERS=L1,L2,L3    (+ ToxicBERT)
+    #   GUARDRAIL_LAYERS=L1,L2,L3,L4 (full stack — default)
+    GUARDRAIL_LAYERS: str = "L1,L2,L3,L4"
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
     @model_validator(mode="after")

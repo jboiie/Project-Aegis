@@ -87,41 +87,48 @@ class GuardrailEngine:
         Returns:
             SafetyVerdict with pass/fail and per-check details.
         """
+        from src.config import settings
+        enabled = set(settings.GUARDRAIL_LAYERS.split(","))
+
         checks: list[GuardrailCheck] = []
 
         # ── Layer 1: Regex pre-filter (< 1ms) ───────────────
-        regex_result = self.regex.check(text)
-        checks.append(regex_result)
-        if not regex_result.passed:
-            return SafetyVerdict(
-                passed=False,
-                checks=checks,
-                blocked_reason=regex_result.detail,
-            )
+        if "L1" in enabled:
+            regex_result = self.regex.check(text)
+            checks.append(regex_result)
+            if not regex_result.passed:
+                return SafetyVerdict(
+                    passed=False,
+                    checks=checks,
+                    blocked_reason=regex_result.detail,
+                )
 
-        # ── Layer 2: Injection detection (DeBERTa, ~10ms) ───
-        injection_result = await self.injection.check(text)
-        checks.append(injection_result)
-        if not injection_result.passed:
-            return SafetyVerdict(
-                passed=False,
-                checks=checks,
-                blocked_reason=injection_result.detail,
-            )
+        # ── Layer 2: Injection detection (DeBERTa, ~300ms) ──
+        if "L2" in enabled:
+            injection_result = await self.injection.check(text)
+            checks.append(injection_result)
+            if not injection_result.passed:
+                return SafetyVerdict(
+                    passed=False,
+                    checks=checks,
+                    blocked_reason=injection_result.detail,
+                )
 
-        # ── Layer 3: Toxicity classification (~10ms) ─────────
-        toxicity_result = await self.toxicity.check(text)
-        checks.append(toxicity_result)
-        if not toxicity_result.passed:
-            return SafetyVerdict(
-                passed=False,
-                checks=checks,
-                blocked_reason=toxicity_result.detail,
-            )
+        # ── Layer 3: Toxicity classification (~150ms) ────────
+        if "L3" in enabled:
+            toxicity_result = await self.toxicity.check(text)
+            checks.append(toxicity_result)
+            if not toxicity_result.passed:
+                return SafetyVerdict(
+                    passed=False,
+                    checks=checks,
+                    blocked_reason=toxicity_result.detail,
+                )
 
         # ── Layer 4: PII redaction (~5ms) ────────────────────
-        pii_result = await self.pii.check(text)
-        checks.append(pii_result)
+        if "L4" in enabled:
+            pii_result = await self.pii.check(text)
+            checks.append(pii_result)
 
         all_passed = all(c.passed for c in checks)
         return SafetyVerdict(
