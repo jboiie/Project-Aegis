@@ -14,7 +14,10 @@ This factory wires together the sandbox components:
 
 from contextlib import asynccontextmanager
 
+import structlog
 from fastapi import FastAPI
+
+logger = structlog.get_logger()
 
 from src.config import settings
 from src.cache.redis_client import RedisCache
