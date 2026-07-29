@@ -130,8 +130,8 @@ if __name__ == "__main__":
     parser.add_argument("--attempts", type=int, default=50)
     parser.add_argument("--seed", type=int, default=42,
                         help="Random seed for reproducible attack corpus (default: 42)")
-    parser.add_argument("--delay", type=float, default=0.3,
-                        help="Seconds between requests to avoid rate limits (default: 0.3)")
+    parser.add_argument("--delay", type=float, default=2.0,
+                        help="Seconds between requests to avoid rate limits (default: 2.0)")
     args = parser.parse_args()
 
     attack_list = [a.strip() for a in args.attacks.split(",")]
