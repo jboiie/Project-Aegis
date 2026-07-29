@@ -71,6 +71,8 @@ async def run_attacks(
     target_url: str,
     attack_names: list[str],
     num_attempts: int = 50,
+    seed: int | None = None,
+    delay: float = 0.3,
 ) -> RunReport:
     """
     Execute a red-team campaign against the target proxy.
@@ -79,11 +81,18 @@ async def run_attacks(
         target_url: The Aegis proxy endpoint.
         attack_names: List of attack strategy names to use.
         num_attempts: Number of attack attempts per strategy.
+        seed: Random seed — fixes the prompt corpus so configs are comparable.
+        delay: Seconds to wait between requests (avoids Groq rate limits).
 
     Returns:
         RunReport with aggregated results.
     """
     report = RunReport()
+
+    if seed is not None:
+        import random
+        random.seed(seed)
+        logger.info("random_seed_set", seed=seed)
 
     for name in attack_names:
         attack_cls = ATTACK_REGISTRY.get(name)
@@ -105,6 +114,8 @@ async def run_attacks(
                 else:
                     report.blocked += 1
 
+                await asyncio.sleep(delay)  # avoid Groq rate limits
+
             except Exception as e:
                 report.errors += 1
                 logger.error("attack_error", strategy=name, attempt=i, error=str(e))
@@ -117,10 +128,15 @@ if __name__ == "__main__":
     parser.add_argument("--target", default="http://localhost:8000/v1/chat/completions")
     parser.add_argument("--attacks", default="template,encoding")
     parser.add_argument("--attempts", type=int, default=50)
+    parser.add_argument("--seed", type=int, default=42,
+                        help="Random seed for reproducible attack corpus (default: 42)")
+    parser.add_argument("--delay", type=float, default=0.3,
+                        help="Seconds between requests to avoid rate limits (default: 0.3)")
     args = parser.parse_args()
 
     attack_list = [a.strip() for a in args.attacks.split(",")]
-    report = asyncio.run(run_attacks(args.target, attack_list, args.attempts))
+    report = asyncio.run(run_attacks(args.target, attack_list, args.attempts,
+                                     seed=args.seed, delay=args.delay))
 
     print("\n" + "=" * 50)
     print("RED TEAM REPORT")
