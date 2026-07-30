@@ -17,6 +17,7 @@ def client():
     )
     mock_engine = MagicMock()
     mock_engine.screen = AsyncMock(return_value=mock_verdict)
+    mock_engine.output_guard.screen_output = MagicMock(side_effect=lambda text: (True, text))
 
     mock_cache = MagicMock()
     mock_cache.connect = AsyncMock()
