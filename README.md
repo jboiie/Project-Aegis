@@ -50,13 +50,16 @@ The sandbox's guardrails are intentionally imperfect. Their job is not to be per
 
 ### Table 2 — Aegis vs. External Baseline (Phase B)
 
-*Same attack corpus fired at Aegis full stack and Llama Guard via Groq inference API.*
+*Same attack corpus (seed=42, n=100) fired at Aegis full stack and Llama Prompt Guard 2 (86M) via Groq.*
 
-| Target | Attack Strategy | ASR ↓ | Notes |
-|---|---|---|---|
-| Aegis full stack | Template + Encoding | —% | — |
-| Llama Guard (external baseline) | Template + Encoding | —% | Via Groq API |
-| Delta | — | — | Positive = Aegis stronger |
+| Target | Template ASR | Encoding ASR | Overall ASR | n |
+|---|---|---|---|---|
+| **Aegis full stack** | ~0% | ~50% | **25.00%** | 100 |
+| **Llama Prompt Guard 2 (86M)** | 0% | 100% | **50.00%** | 100 |
+| **Delta (Aegis − Llama Guard)** | ±0% | −50pp | **−25pp** | — |
+
+> Positive delta = Llama Guard stronger. Negative delta = Aegis stronger.
+> Both systems block 100% of template attacks. The gap is entirely on encoding-obfuscated attacks.
 
 ### Table 3 — PAIR vs. Template/Encoding (Phase C)
 
@@ -71,7 +74,7 @@ The sandbox's guardrails are intentionally imperfect. Their job is not to be per
 ### Key Takeaways
 
 - **Phase A ✅**: L2 (DeBERTa injection classifier) provides the entire measurable defence, dropping ASR from 87% (regex-only) to 25% (a 62 percentage-point reduction). L3 (ToxicBERT) and L4 (PII redaction) add zero marginal protection against the injection/encoding attack corpus used here — they target hate speech and PII respectively, not prompt injection. The 25% residual ASR consists entirely of encoding-obfuscated attacks that bypass all text-based classifiers.
-- _[To be filled after Phase B]_ Comparative finding: how Aegis full-stack ASR compares to Llama Guard on the same attack corpus.
+- **Phase B ✅**: Aegis full stack (25% ASR) outperforms Llama Prompt Guard 2 86M (50% ASR) by 25 percentage points on the same attack corpus. Both systems achieve 0% ASR on template attacks. The entire gap comes from encoding attacks: Llama Guard outputs a near-zero probability score on base64/ROT13/leetspeak payloads (it cannot decode them to evaluate intent), while Aegis’s DeBERTa classifier catches ~50% of encoding attacks, likely because it was fine-tuned on datasets that include the obfuscation framing pattern itself.
 - _[To be filled after Phase C]_ Adaptive attack finding: whether PAIR achieves meaningfully higher ASR than fixed-corpus attacks against the same target.
 
 ### Qualitative Findings (Prior Work)
