@@ -19,29 +19,35 @@ async def chat_completions(request: ChatRequest, raw_request: Request):
     Main proxy endpoint.
 
     Pipeline:
-      1. Check semantic cache → instant block if known-malicious
-      2. Run guardrail fleet (injection, toxicity, PII)
-      3. If safe → forward to target LLM (Groq)
-      4. Screen LLM response (output guardrails)
-      5. Log everything to telemetry
+      1. Extract session identifier (X-Session-ID header or client IP)
+      2. Check session lockout velocity (PAIR defense)
+      3. Run guardrail fleet (L1 Regex, L2 DeBERTa, L3 Toxicity, L4 PII)
+      4. Forward safe requests to target LLM (Groq)
+      5. Dual-pass output screening on generated response
       6. Return response to user
     """
     prompt = request.messages[-1].content
+    session_id = raw_request.headers.get("X-Session-ID") or (
+        raw_request.client.host if raw_request.client else "default_session"
+    )
 
     engine = raw_request.app.state.guardrail_engine
-    verdict = await engine.screen(prompt)
+    verdict = await engine.screen(prompt, session_id=session_id)
     if not verdict.passed:
         return ChatResponse.blocked(verdict)
 
-    # TODO: semantic cache lookup (not yet wired)
-    # TODO: output guardrails (not yet wired)
-    # TODO: telemetry logging (not yet wired)
-
     llm_response = await forward_to_llm(request)
-    content = llm_response["choices"][0]["message"]["content"]
+    raw_content = llm_response["choices"][0]["message"]["content"]
+
+    # Dual-pass output screening
+    output_passed, final_content = engine.output_guard.screen_output(raw_content)
+    if not output_passed:
+        verdict.passed = False
+        verdict.blocked_reason = final_content
 
     return ChatResponse(
-        content=content,
+        content=final_content,
         model=request.model,
         safety=verdict,
     )
+

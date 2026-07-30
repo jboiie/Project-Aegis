@@ -50,6 +50,8 @@ from src.guardrails.regex_rules import RegexGuardrail
 from src.guardrails.injection import InjectionDetector
 from src.guardrails.toxicity import ToxicityClassifier
 from src.guardrails.pii import PIIRedactor
+from src.guardrails.session import SessionGuard
+from src.guardrails.output import OutputGuard
 
 
 class GuardrailEngine:
@@ -68,6 +70,8 @@ class GuardrailEngine:
 
         # Fast, no-ML checks run first
         self.regex = RegexGuardrail()
+        self.session_guard = SessionGuard()
+        self.output_guard = OutputGuard()
 
         # ML-based checks (loaded lazily)
         self.injection = InjectionDetector()
@@ -80,7 +84,7 @@ class GuardrailEngine:
         await self.toxicity.load()
         # PII uses regex + spaCy NER — no heavy model needed
 
-    async def screen(self, text: str) -> SafetyVerdict:
+    async def screen(self, text: str, session_id: str | None = None) -> SafetyVerdict:
         """
         Run all guardrails against the input text.
 
@@ -90,6 +94,21 @@ class GuardrailEngine:
         from src.config import settings
         enabled = set(settings.GUARDRAIL_LAYERS.split(","))
 
+        # Check session lockout (PAIR defense)
+        if session_id and self.session_guard.is_session_locked(session_id):
+            lock_check = GuardrailCheck(
+                layer="SessionGuard",
+                passed=False,
+                score=1.0,
+                threshold=0.5,
+                detail="Session rate limited due to repeated safety rejections (PAIR defense active)",
+            )
+            return SafetyVerdict(
+                passed=False,
+                checks=[lock_check],
+                blocked_reason=lock_check.detail,
+            )
+
         checks: list[GuardrailCheck] = []
 
         # ── Layer 1: Regex pre-filter (< 1ms) ───────────────
@@ -97,6 +116,8 @@ class GuardrailEngine:
             regex_result = self.regex.check(text)
             checks.append(regex_result)
             if not regex_result.passed:
+                if session_id:
+                    self.session_guard.record_rejection(session_id)
                 return SafetyVerdict(
                     passed=False,
                     checks=checks,
@@ -108,6 +129,8 @@ class GuardrailEngine:
             injection_result = await self.injection.check(text)
             checks.append(injection_result)
             if not injection_result.passed:
+                if session_id:
+                    self.session_guard.record_rejection(session_id)
                 return SafetyVerdict(
                     passed=False,
                     checks=checks,
@@ -119,6 +142,8 @@ class GuardrailEngine:
             toxicity_result = await self.toxicity.check(text)
             checks.append(toxicity_result)
             if not toxicity_result.passed:
+                if session_id:
+                    self.session_guard.record_rejection(session_id)
                 return SafetyVerdict(
                     passed=False,
                     checks=checks,
@@ -131,6 +156,9 @@ class GuardrailEngine:
             checks.append(pii_result)
 
         all_passed = all(c.passed for c in checks)
+        if not all_passed and session_id:
+            self.session_guard.record_rejection(session_id)
+
         return SafetyVerdict(
             passed=all_passed,
             checks=checks,
