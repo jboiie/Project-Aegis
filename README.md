@@ -63,19 +63,20 @@ The sandbox's guardrails are intentionally imperfect. Their job is not to be per
 
 ### Table 3 — PAIR vs. Template/Encoding (Phase C)
 
-*Adaptive attack (PAIR) compared to fixed-corpus attacks against full Aegis stack.*
+*Adaptive attack (PAIR with llama-3.1-8b-instant attacker, max_iterations=5) compared to fixed-corpus attacks against full Aegis stack.*
 
 | Strategy | Attacks Fired | Bypasses | ASR ↓ | Avg. Iterations to Bypass |
 |---|---|---|---|---|
-| Template | — | — | —% | N/A |
-| Encoding | — | — | —% | N/A |
-| PAIR | — | — | —% | — |
+| Template (Fixed) | 50 | 0 | **0.00%** | N/A |
+| Encoding (Fixed) | 50 | 25 | **50.00%** | N/A |
+| **PAIR (Adaptive)** | 20 | 19 | **95.00%** | **2.00** |
+
 
 ### Key Takeaways
 
 - **Phase A ✅**: L2 (DeBERTa injection classifier) provides the entire measurable defence, dropping ASR from 87% (regex-only) to 25% (a 62 percentage-point reduction). L3 (ToxicBERT) and L4 (PII redaction) add zero marginal protection against the injection/encoding attack corpus used here — they target hate speech and PII respectively, not prompt injection. The 25% residual ASR consists entirely of encoding-obfuscated attacks that bypass all text-based classifiers.
 - **Phase B ✅**: Aegis full stack (25% ASR) outperforms Llama Prompt Guard 2 86M (50% ASR) by 25 percentage points on the same attack corpus. Both systems achieve 0% ASR on template attacks. The entire gap comes from encoding attacks: Llama Guard outputs a near-zero probability score on base64/ROT13/leetspeak payloads (it cannot decode them to evaluate intent), while Aegis’s DeBERTa classifier catches ~50% of encoding attacks, likely because it was fine-tuned on datasets that include the obfuscation framing pattern itself.
-- _[To be filled after Phase C]_ Adaptive attack finding: whether PAIR achieves meaningfully higher ASR than fixed-corpus attacks against the same target.
+- **Phase C ✅**: Adaptive attacks (PAIR) achieve a **95.00% ASR** against the full Aegis stack, requiring an average of only **2.00 iterations** to bypass all guardrail layers. While static ML classifiers (DeBERTa) effectively neutralize fixed templates (0% ASR) and reduce fixed encodings (50% ASR), an attacker LLM dynamically refines prompt framing to exploit classifier feature blind spots. This proves that static input guardrails cannot defend against LLM-driven adaptive red-teaming without stateful session tracking and real-time feedback mitigations.
 
 ### Qualitative Findings (Prior Work)
 
@@ -148,7 +149,7 @@ The pipeline is the primary system. The sandbox is what it attacks.
               ┌───────────────────────────────┐
               │  Streamlit Dashboard           │
               │  Real-time metrics, attack log │
-              └───────────────────────────────┘
+              └───────────────┬───────────────┘
 ```
 
 ### Design Decisions
@@ -208,7 +209,7 @@ Bypasses discovered in one campaign inform the next. The pipeline logs every suc
 |---|---|---|---|---|
 | **Template** | Known jailbreaks (DAN, AIM, role-play, hypothetical framing) | Low | ✅ Implemented | [JailbreakChat](https://jailbreakchat.com) |
 | **Encoding** | Base64, ROT13, leetspeak, word-split obfuscation | Low | ✅ Implemented | [Wei et al. 2023](https://arxiv.org/abs/2307.15043) |
-| **PAIR** | LLM-vs-LLM iterative refinement — attacker LLM rephrases until target breaks | Medium | 🔲 In Progress | [Chao et al. 2023](https://arxiv.org/abs/2310.08419) |
+| **PAIR** | LLM-vs-LLM iterative refinement — attacker LLM rephrases until target breaks | Medium | ✅ Implemented | [Chao et al. 2023](https://arxiv.org/abs/2310.08419) |
 
 **Template attacks** inject known jailbreak templates (DAN, AIM, developer mode, etc.) into the sandbox. These test whether L1 regex rules are comprehensive and whether L2/L3 catch paraphrased variants.
 
@@ -401,7 +402,7 @@ Designed to run on a student budget.
 
 The immediate goal is producing real, defensible ASR numbers — not more infrastructure. Three phases, in order of priority.
 
-### Phase A — Baseline ASR ⬅ In Progress
+### Phase A — Baseline ASR ✅
 Run the pipeline against the sandbox with layers enabled incrementally. Each configuration uses the same attack set, same prompt corpus.
 
 - [x] Wire full sandbox pipeline: cache → guardrails → LLM → response
@@ -411,27 +412,21 @@ Run the pipeline against the sandbox with layers enabled incrementally. Each con
 - [x] Re-run Phase A with n=100 per strategy for statistically reliable layer-by-layer ASR
 - [x] Fill in Table 1 (Findings section)
 
-**Deliverable**: A completed Table 1 showing how much ASR drops as each guardrail layer is added. This is the core empirical finding.
-
-### Phase B — External Baseline Comparison
+### Phase B — External Baseline Comparison ✅
 Run the same attack corpus against one external reference guardrail to make the numbers meaningful beyond self-reference.
 
-- [ ] Wire Llama Guard via Groq inference API as the comparison target
-- [ ] Run same template + encoding attack set against external baseline
-- [ ] Compute delta: Aegis full-stack ASR vs. external baseline ASR
-- [ ] Fill in Table 2 (Findings section)
+- [x] Wire Llama Guard via Groq inference API as the comparison target
+- [x] Run same template + encoding attack set against external baseline
+- [x] Compute delta: Aegis full-stack ASR vs. external baseline ASR
+- [x] Fill in Table 2 (Findings section)
 
-**Deliverable**: A completed Table 2 placing Aegis ASR in context against a known external system.
-
-### Phase C — PAIR Integration
+### Phase C — PAIR Integration ✅
 Wire the adaptive attack strategy and measure whether it achieves higher ASR than fixed-corpus attacks.
 
-- [ ] Implement PAIR loop in `redteam/attacks/pair.py`: Groq Llama 3 as attacker LLM, iterate until bypass or max iterations (default: 20)
-- [ ] Run PAIR against full sandbox stack; record ASR and average iterations-to-bypass
-- [ ] Run PAIR against external baseline from Phase B for cross-target comparison
-- [ ] Fill in Table 3 (Findings section)
-
-**Deliverable**: A completed Table 3 comparing PAIR ASR (and iteration count) against template/encoding baselines.
+- [x] Implement PAIR loop in `redteam/attacks/pair.py`: Groq Llama 3 as attacker LLM, iterate until bypass or max iterations (default: 5)
+- [x] Run PAIR against full sandbox stack; record ASR and average iterations-to-bypass
+- [x] Run PAIR against external baseline from Phase B for cross-target comparison
+- [x] Fill in Table 3 (Findings section)
 
 ### Future Directions
 
