@@ -23,7 +23,12 @@ def client():
     mock_cache.connect = AsyncMock()
     mock_cache.disconnect = AsyncMock()
 
+    mock_telemetry = MagicMock()
+    mock_telemetry.connect = AsyncMock()
+    mock_telemetry.log_event = AsyncMock()
+
     app.state.guardrail_engine = mock_engine
     app.state.cache = mock_cache
+    app.state.telemetry = mock_telemetry
 
     return TestClient(app)
