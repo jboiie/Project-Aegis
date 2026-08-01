@@ -52,6 +52,9 @@ from src.guardrails.toxicity import ToxicityClassifier
 from src.guardrails.pii import PIIRedactor
 from src.guardrails.session import SessionGuard
 from src.guardrails.output import OutputGuard
+from src.cache.redis_client import RedisCache
+from src.cache.semantic import SemanticCache
+from src.utils.embeddings import EmbeddingModel
 
 
 class GuardrailEngine:
@@ -64,7 +67,12 @@ class GuardrailEngine:
         verdict = await engine.screen("Tell me how to hack a bank")
     """
 
-    def __init__(self, injection_threshold: float = 0.85, toxicity_threshold: float = 0.80):
+    def __init__(
+        self,
+        injection_threshold: float = 0.85,
+        toxicity_threshold: float = 0.80,
+        redis_cache: RedisCache | None = None,
+    ):
         self.injection_threshold = injection_threshold
         self.toxicity_threshold = toxicity_threshold
 
@@ -78,10 +86,17 @@ class GuardrailEngine:
         self.toxicity = ToxicityClassifier()
         self.pii = PIIRedactor()
 
+        # L0: semantic cache of known-blocked prompts (near-duplicate PAIR iterations)
+        self.semantic_cache: SemanticCache | None = None
+        if redis_cache is not None:
+            self.semantic_cache = SemanticCache(redis=redis_cache, embedder=EmbeddingModel())
+
     async def load_models(self):
         """Load all ML model weights into memory. Call once at startup."""
         await self.injection.load()
         await self.toxicity.load()
+        if self.semantic_cache is not None:
+            self.semantic_cache.embedder.load()
         # PII uses regex + spaCy NER — no heavy model needed
 
     async def screen(self, text: str, session_id: str | None = None) -> SafetyVerdict:
@@ -97,10 +112,9 @@ class GuardrailEngine:
         # Check session lockout (PAIR defense)
         if session_id and self.session_guard.is_session_locked(session_id):
             lock_check = GuardrailCheck(
-                layer="SessionGuard",
+                name="session_guard",
                 passed=False,
-                score=1.0,
-                threshold=0.5,
+                confidence=1.0,
                 detail="Session rate limited due to repeated safety rejections (PAIR defense active)",
             )
             return SafetyVerdict(
@@ -108,6 +122,24 @@ class GuardrailEngine:
                 checks=[lock_check],
                 blocked_reason=lock_check.detail,
             )
+
+        # ── Layer 0: Semantic cache — near-duplicate of a known-blocked prompt (< 5ms) ──
+        if self.semantic_cache is not None:
+            is_threat, similarity = await self.semantic_cache.check(text)
+            if is_threat:
+                cache_check = GuardrailCheck(
+                    name="semantic_cache",
+                    passed=False,
+                    confidence=similarity,
+                    detail=f"Matched known-blocked prompt (similarity={similarity:.3f})",
+                )
+                if session_id:
+                    self.session_guard.record_rejection(session_id)
+                return SafetyVerdict(
+                    passed=False,
+                    checks=[cache_check],
+                    blocked_reason=cache_check.detail,
+                )
 
         checks: list[GuardrailCheck] = []
 
@@ -118,6 +150,8 @@ class GuardrailEngine:
             if not regex_result.passed:
                 if session_id:
                     self.session_guard.record_rejection(session_id)
+                if self.semantic_cache is not None:
+                    await self.semantic_cache.add_malicious(text, reason=regex_result.detail)
                 return SafetyVerdict(
                     passed=False,
                     checks=checks,
@@ -131,6 +165,8 @@ class GuardrailEngine:
             if not injection_result.passed:
                 if session_id:
                     self.session_guard.record_rejection(session_id)
+                if self.semantic_cache is not None:
+                    await self.semantic_cache.add_malicious(text, reason=injection_result.detail)
                 return SafetyVerdict(
                     passed=False,
                     checks=checks,
@@ -144,6 +180,8 @@ class GuardrailEngine:
             if not toxicity_result.passed:
                 if session_id:
                     self.session_guard.record_rejection(session_id)
+                if self.semantic_cache is not None:
+                    await self.semantic_cache.add_malicious(text, reason=toxicity_result.detail)
                 return SafetyVerdict(
                     passed=False,
                     checks=checks,
