@@ -132,6 +132,10 @@ if __name__ == "__main__":
                         help="Random seed for reproducible attack corpus (default: 42)")
     parser.add_argument("--delay", type=float, default=2.0,
                         help="Seconds between requests to avoid rate limits (default: 2.0)")
+    parser.add_argument("--fail-above", type=float, default=None, metavar="THRESHOLD",
+                        help="Exit with code 1 if ASR exceeds this percentage (e.g. --fail-above 20 "
+                             "fails the run if more than 20%% of attacks bypass guardrails). "
+                             "Designed for CI/CD gate integration.")
     args = parser.parse_args()
 
     attack_list = [a.strip() for a in args.attacks.split(",")]
@@ -143,3 +147,11 @@ if __name__ == "__main__":
     print("=" * 50)
     for key, val in report.summary().items():
         print(f"  {key}: {val}")
+
+    if args.fail_above is not None:
+        asr_pct = report.attack_success_rate * 100
+        if asr_pct > args.fail_above:
+            print(f"\n[FAIL] ASR {asr_pct:.2f}% exceeds threshold {args.fail_above}% — exiting with code 1")
+            import sys; sys.exit(1)
+        else:
+            print(f"\n[PASS] ASR {asr_pct:.2f}% is within threshold {args.fail_above}%")

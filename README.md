@@ -397,12 +397,13 @@ pip install -e ".[redteam]"
 # Set your Groq API key (used by PAIR's attacker LLM — free tier is fine)
 export GROQ_API_KEY=gsk_...
 
-# Fire a 100-attack campaign at your endpoint
+# Fire a 100-attack campaign; fail CI if ASR exceeds 20%
 python -m redteam.runner \
   --target https://your-api.example.com/v1/chat/completions \
   --attacks template,encoding,pair \
   --attempts 100 \
-  --seed 42
+  --seed 42 \
+  --fail-above 20
 ```
 
 ### What to Configure
@@ -413,7 +414,10 @@ python -m redteam.runner \
 | `--attacks` | CLI flag | Comma-separated: `template`, `encoding`, `pair` (or all three) |
 | `--attempts` | CLI flag | Attacks per strategy. 50–100 gives stable ASR numbers |
 | `--seed` | CLI flag | Fix seed for reproducibility across runs (default: 42) |
+| `--fail-above` | CLI flag | Exit code 1 if ASR exceeds this % — use as a CI/CD gate (e.g. `--fail-above 20`) |
 | `GROQ_API_KEY` | `.env` or shell | Required for PAIR's attacker LLM. [Get one free](https://console.groq.com/keys) |
+
+The runner sends OpenAI-format `POST` requests (`{"model": "...", "messages": [{"role": "user", "content": "<attack prompt>"}]}`) and expects a JSON response with a `choices[0].message.content` field. Any proxy that speaks OpenAI-compatible chat completions works without modification.
 
 ### What the Report Looks Like
 
@@ -440,8 +444,6 @@ Each bypass is logged with: the exact prompt that worked, the attack strategy th
 | **60%+** | Regex-only or no guardrails. The pipeline is near-baseline |
 
 > **Note:** A low fixed-corpus ASR does not mean you are safe against PAIR. Our own stack scored 25% on fixed attacks and 95% against the adaptive attacker. Run all three strategies.
-
----
 
 ## 🔮 Roadmap
 
