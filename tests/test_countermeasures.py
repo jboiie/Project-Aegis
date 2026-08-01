@@ -3,6 +3,7 @@
 import pytest
 from src.guardrails.session import SessionGuard
 from src.guardrails.output import OutputGuard
+from src.guardrails.engine import GuardrailEngine
 
 
 def test_session_guard_lockout():
@@ -39,3 +40,26 @@ def test_output_guard_detection():
     passed_bad, content_bad = guard.screen_output("Step 1: Hack into the network using a backdoor script")
     assert not passed_bad
     assert "[BLOCKED]" in content_bad
+
+
+async def test_engine_returns_verdict_on_session_lockout():
+    """
+    Regression test: GuardrailEngine.screen() must not crash when a session
+    is locked out. Previously the lockout path built a GuardrailCheck with
+    fields that don't exist on the schema (layer/score/threshold instead of
+    name/confidence), which raised a pydantic ValidationError -> 500 on every
+    locked request instead of returning a clean blocked verdict.
+    """
+    engine = GuardrailEngine()  # no redis_cache -> semantic cache disabled, no ML models loaded
+    session_id = "locked_session"
+
+    engine.session_guard.record_rejection(session_id)
+    engine.session_guard.record_rejection(session_id)
+    engine.session_guard.record_rejection(session_id)
+    assert engine.session_guard.is_session_locked(session_id)
+
+    verdict = await engine.screen("anything", session_id=session_id)
+
+    assert not verdict.passed
+    assert verdict.checks[0].name == "session_guard"
+    assert "rate limited" in verdict.blocked_reason.lower()
