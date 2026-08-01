@@ -17,7 +17,7 @@
 
 ---
 
-> **PAIR (adaptive LLM attacker) achieved a 95% bypass rate against our full guardrail stack — in an average of 2 iterations per goal.** Static ML classifiers that cut a fixed-corpus attack rate from 87% to 25% are nearly useless against an attacker that receives rejection feedback and rephrases. That gap is the core finding. Everything else in this repo is measuring where and why it happens.
+> **PAIR (adaptive LLM attacker) achieved a 95% bypass rate against our full guardrail stack — in an average of 2 iterations per goal.** Static ML classifiers that cut a fixed-corpus attack rate from 87% to 25% are nearly useless against an attacker that receives rejection feedback and rephrases. That gap is the core finding. Adding session-level rejection tracking (breaking the feedback loop PAIR depends on) cut that back down to 20% — see [Table 4](#-findings). Everything else in this repo is measuring where and why it happens.
 
 ---
 
@@ -73,12 +73,25 @@ The sandbox has known coverage gaps — the same gaps present in real production
 | Encoding (Fixed) | 50 | 25 | **50.00%** | N/A |
 | **PAIR (Adaptive)** | 20 | 19 | **95.00%** | **2.00** |
 
+### Table 4 — PAIR vs. Aegis + Countermeasures (Phase D)
+
+*Same PAIR setup as Table 3 (seed=42, 20 goals, max_iterations=5), rerun against the full stack plus three countermeasures: SessionGuard (session lockout after 3 rejections/5min), OutputGuard (dual-pass output screening), SemanticCache (L0 embedding-similarity block on known-blocked prompts).*
+
+| Configuration | Attacks Fired | Bypasses | ASR ↓ | Avg. Iterations to Bypass |
+|---|---|---|---|---|
+| Full stack, no countermeasures | 20 | 19 | **95.00%** | 2.00 |
+| **Full stack + SessionGuard + OutputGuard + SemanticCache** | 20 | 4 | **20.00%** | 2.25 |
+
+> SemanticCache recorded 0 blocks in this run — PAIR's rephrasing is novel enough each turn that L0 rarely gets a near-duplicate match before SessionGuard's rejection-velocity lockout already ends the session. SessionGuard is doing essentially all of the work here.
+>
+> **Note on measurement integrity:** the first rerun of this experiment showed the same 20.00% ASR, but for the wrong reason — a schema bug in SessionGuard's lockout path (`GuardrailCheck` built with fields that don't match the model) caused every lockout to crash with a 500 instead of returning a clean block, and PAIR's error handler misclassified those crashes as "blocked." Fixed in `src/guardrails/engine.py`; the number above is from the post-fix run with zero server errors. A regression test (`tests/test_countermeasures.py::test_engine_returns_verdict_on_session_lockout`) now covers this path.
 
 ### Key Takeaways
 
 - **Phase A ✅**: L2 (DeBERTa injection classifier) provides the entire measurable defence, dropping ASR from 87% (regex-only) to 25% (a 62 percentage-point reduction). L3 (ToxicBERT) and L4 (PII redaction) add zero marginal protection against the injection/encoding attack corpus used here — they target hate speech and PII respectively, not prompt injection. The 25% residual ASR consists entirely of encoding-obfuscated attacks that bypass all text-based classifiers.
 - **Phase B ✅**: Aegis full stack (25% ASR) outperforms Llama Prompt Guard 2 86M (50% ASR) by 25 percentage points on the same attack corpus. Both systems achieve 0% ASR on template attacks. The entire gap comes from encoding attacks: Llama Guard outputs a near-zero probability score on base64/ROT13/leetspeak payloads (it cannot decode them to evaluate intent), while Aegis’s DeBERTa classifier catches ~50% of encoding attacks, likely because it was fine-tuned on datasets that include the obfuscation framing pattern itself.
 - **Phase C ✅**: Adaptive attacks (PAIR) achieve a **95.00% ASR** against the full Aegis stack, requiring an average of only **2.00 iterations** to bypass all guardrail layers. While static ML classifiers (DeBERTa) effectively neutralize fixed templates (0% ASR) and reduce fixed encodings (50% ASR), an attacker LLM dynamically refines prompt framing to exploit classifier feature blind spots. This proves that static input guardrails cannot defend against LLM-driven adaptive red-teaming without stateful session tracking and real-time feedback mitigations.
+- **Phase D ✅**: Adding SessionGuard + OutputGuard + SemanticCache cuts PAIR's ASR from 95.00% to **20.00%** (75pp reduction), landing back in the same range as the fixed-corpus full-stack ASR (25%). Session-level rejection tracking — not per-prompt classification — is what neutralizes an iterative attacker: PAIR's entire strategy depends on a sustained feedback loop with one session, and breaking that loop matters more than catching any individual rephrase.
 
 ### Qualitative Findings (Prior Work)
 
@@ -470,6 +483,16 @@ Wire the adaptive attack strategy and measure whether it achieves higher ASR tha
 - [x] Run PAIR against full sandbox stack; record ASR and average iterations-to-bypass
 - [x] Run PAIR against external baseline from Phase B for cross-target comparison
 - [x] Fill in Table 3 (Findings section)
+
+### Phase D — Countermeasures ✅
+Implement and empirically validate defenses against the PAIR bypass rate found in Phase C.
+
+- [x] Implement SessionGuard (`src/guardrails/session.py`): rejection-velocity lockout, breaks PAIR's feedback loop
+- [x] Implement OutputGuard (`src/guardrails/output.py`): dual-pass response screening
+- [x] Wire SemanticCache (`src/cache/semantic.py`) into the live request path (was previously dead code — implemented but never instantiated)
+- [x] Fix schema bug in SessionGuard's lockout path that crashed requests with a 500 instead of returning a clean block
+- [x] Re-run PAIR (same seed=42, 20 goals) against full stack + all three countermeasures: 95.00% → 20.00% ASR
+- [x] Fill in Table 4 (Findings section)
 
 ### Future Directions
 
