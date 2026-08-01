@@ -443,7 +443,7 @@ Each bypass is logged with: the exact prompt that worked, the attack strategy th
 
 ## 🔮 Roadmap
 
-The immediate goal is producing real, defensible ASR numbers — not more infrastructure. Three phases, in order of priority.
+All three research phases are complete. The pipeline was built around one constraint: produce real, defensible ASR numbers against a live target — not synthetic benchmarks, not self-reported estimates. Everything below tracks how that was executed.
 
 ### Phase A — Baseline ASR ✅
 Run the pipeline against the sandbox with layers enabled incrementally. Each configuration uses the same attack set, same prompt corpus.
