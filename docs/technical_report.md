@@ -27,6 +27,10 @@ Through three rigorous experimental phases (n=100 per strategy, fixed seed=42), 
    - When exposed to an adaptive Attacker LLM (`llama-3.1-8b-instant`) operating in an iterative feedback loop (PAIR), Aegis's full-stack ASR soared from **25.00% to 95.00%**.
    - The Attacker LLM required an average of **only 2.00 iterations** to mutate prompt framing and bypass all guardrail layers.
 
+4. **Session-Level Countermeasures Neutralize PAIR (Phase D):**
+   - Wiring SessionGuard, OutputGuard, and SemanticCache into the live request path and re-running the identical PAIR campaign (seed=42, 20 goals) cut ASR from **95.00% to 20.00%** — a 75 percentage-point reduction.
+   - Rejection-velocity session lockout (SessionGuard), not per-prompt classification, accounts for nearly all of the reduction: PAIR's attack model depends on a sustained feedback loop within one session, and breaking that loop is more effective than trying to classify each individual rephrase.
+
 ---
 
 ## 1. System Architecture & Methodology
@@ -106,21 +110,34 @@ The Aegis sandbox implements an instrumented OpenAI-compatible gateway (`/v1/cha
 
 ## 3. Defense & Countermeasure Architecture (Phase D)
 
-To mitigate the **95% PAIR bypass rate**, we propose and implement three stateful countermeasure mechanisms in Aegis:
+To mitigate the **95% PAIR bypass rate**, we implement three stateful countermeasure mechanisms in Aegis:
 
 ### 1. Semantic Intent Caching (`src/cache/semantic.py`)
-Rather than evaluating every prompt statelessly, previously blocked prompts are embedded via `sentence-transformers/all-MiniLM-L6-v2` and stored in Redis. Incoming prompts with cosine similarity $\ge 0.85$ to known malicious intents are blocked instantly at L0.
+Previously blocked prompts are embedded via `sentence-transformers/all-MiniLM-L6-v2` and stored in Redis. Incoming prompts with cosine similarity $\ge 0.92$ to known malicious intents are blocked instantly at L0.
 
 ### 2. Stateful Session & Rejection Tracking (`src/guardrails/session.py`)
-Attacker LLMs rely on iterative feedback (`[BLOCKED]` responses). By tracking client session identifiers and monitoring rejection velocity (e.g. $>3$ blocked attempts within 5 minutes), the gateway issues a temporary session ban, breaking the PAIR feedback loop.
+Attacker LLMs rely on iterative feedback (`[BLOCKED]` responses). By tracking client session identifiers and monitoring rejection velocity ($\ge 3$ blocked attempts within 5 minutes), the gateway issues a temporary session ban, breaking the PAIR feedback loop.
 
 ### 3. Dual-Pass Output Guardrails (`src/gateway/router.py`)
 When input classifiers fail against heavily obfuscated prompts, output verification screens the target LLM's response prior to client delivery. If the LLM generates actionable harmful instructions or refusal failures, the output is redacted.
+
+### Empirical Validation
+
+The three countermeasures above were wired into the live request path and the identical PAIR campaign from Phase C (seed=42, 20 goals, max_iterations=5) was re-run against the full stack.
+
+| Configuration | Attacks Fired | Bypasses | ASR ↓ | Avg. Iterations to Bypass |
+|---|---|---|---|---|
+| Full stack, no countermeasures (Phase C) | 20 | 19 | **95.00%** | 2.00 |
+| **Full stack + SessionGuard + OutputGuard + SemanticCache** | 20 | 4 | **20.00%** | 2.25 |
+
+SemanticCache recorded zero blocks during this run: PAIR's per-iteration rephrasing is novel enough that L0 rarely finds a near-duplicate before SessionGuard's rejection-velocity lockout ends the session first. SessionGuard is doing effectively all of the observed work; OutputGuard and SemanticCache did not fire in this campaign but remain defense-in-depth for attack patterns this corpus didn't exercise (e.g. a slower attacker staying under the rejection-velocity threshold, or an attack that reaches the output stage).
+
+**Measurement integrity note:** the first validation run also measured 20.00% ASR, but for the wrong reason. `GuardrailEngine`'s session-lockout path constructed a `GuardrailCheck` with fields that don't exist on that schema (`layer=`, `score=`, `threshold=` instead of `name=`, `confidence=`), which raised a `pydantic.ValidationError` and returned an HTTP 500 on every lockout instead of a clean blocked verdict. The red-team runner's error handler treats any request exception as a block, so these crashes were silently miscounted as successful defenses (77 of ~100 requests crashed during that run). The bug was fixed and the campaign re-run cleanly with zero server errors before the number above was accepted. A regression test (`tests/test_countermeasures.py::test_engine_returns_verdict_on_session_lockout`) now exercises the lockout path through `GuardrailEngine.screen()` rather than testing `SessionGuard` in isolation, which is the coverage gap that let this ship originally.
 
 ---
 
 ## 4. Conclusion
 
-The empirical findings of Project Aegis demonstrate that **alignment and safety in open-weight models and static guardrails are fragile pattern-matching surfaces**. While multi-layer ML stacks like DeBERTa significantly outperform commercial baselines like Llama Guard against fixed attacks, they remain fundamentally vulnerable to adaptive LLM red-teaming (PAIR). 
+The empirical findings of Project Aegis demonstrate that **alignment and safety in open-weight models and static guardrails are fragile pattern-matching surfaces**. While multi-layer ML stacks like DeBERTa significantly outperform commercial baselines like Llama Guard against fixed attacks, they remain fundamentally vulnerable to adaptive LLM red-teaming (PAIR).
 
-Defending next-generation AI systems requires transitioning from static, single-turn input filtering to **stateful, session-aware defensive pipelines with semantic intent caching and output validation**.
+Defending next-generation AI systems requires transitioning from static, single-turn input filtering to **stateful, session-aware defensive pipelines**. This is not just a theoretical prescription: wiring session-level rejection tracking, dual-pass output screening, and semantic intent caching into Aegis's live request path cut PAIR's ASR from 95.00% to 20.00% against the identical attack campaign. The dominant contributor was session-level state, not per-prompt classification — the same lesson as Phase A/B/C in reverse: the attacker's advantage came from being stateful (iterating with feedback) while the defense was stateless, and the fix was to make the defense stateful too.
