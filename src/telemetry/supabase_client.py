@@ -34,11 +34,18 @@ class TelemetryClient:
         self._client = None
 
     async def connect(self):
-        """Initialize Supabase client."""
-        # TODO: Uncomment when supabase credentials are configured
-        # from supabase import create_client
-        # self._client = create_client(self.url, self.key)
-        logger.info("telemetry_client_initialized", table=self.table)
+        """Initialize Supabase client. Falls back to local logging if unconfigured."""
+        placeholder = not self.url or not self.key or "your-project" in self.url or self.key == "your_anon_key_here"
+        if placeholder:
+            logger.info("telemetry_client_dev_mode", table=self.table, reason="SUPABASE_URL/KEY not configured")
+            return
+
+        try:
+            from supabase import create_client
+            self._client = create_client(self.url, self.key)
+            logger.info("telemetry_client_connected", table=self.table)
+        except Exception as exc:
+            logger.warning("telemetry_connect_failed", error=str(exc), action="using_local_logging")
 
     async def log_event(
         self,
