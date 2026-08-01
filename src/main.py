@@ -39,7 +39,7 @@ async def lifespan(app: FastAPI):
     )
     await app.state.cache.connect()
 
-    app.state.guardrail_engine = GuardrailEngine()
+    app.state.guardrail_engine = GuardrailEngine(redis_cache=app.state.cache)
     await app.state.guardrail_engine.load_models()
 
     # Startup probe — verify the guardrail pipeline is functional end-to-end
