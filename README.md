@@ -38,8 +38,6 @@ The sandbox has known coverage gaps — the same gaps present in real production
 
 ## 📊 Findings
 
-> Results are populated as experiments run. Placeholder rows (—) indicate pending measurement.
-
 ### Table 1 — ASR by Cumulative Guardrail Layer (Phase A)
 
 *Attack set: template + encoding attacks, n=100 total (50 per strategy), seed=42, 0 errors.*
@@ -188,11 +186,11 @@ python -m redteam.runner \
 # ==================================================
 # RED TEAM REPORT
 # ==================================================
-#   total_attacks: 200
-#   successful_bypasses: 17
-#   blocked: 177
-#   errors: 6
-#   attack_success_rate: 8.50%
+#   total_attacks: 100
+#   successful_bypasses: 25
+#   blocked: 75
+#   errors: 0
+#   attack_success_rate: 25.00%
 ```
 
 ### Feedback Loop
@@ -224,8 +222,6 @@ Bypasses discovered in one campaign inform the next. The pipeline logs every suc
 ### Known Limitations
 
 **GCG (Greedy Coordinate Gradient) is not implemented and is not planned for this iteration.** GCG requires white-box access to model logits and gradients, which is fundamentally incompatible with API-based targets like Groq. This is itself a relevant finding: black-box pipelines are limited to query-based attack strategies (template, encoding, PAIR). Gradient-based methods require local model weights and are therefore out of scope for any evaluation pipeline targeting production API endpoints.
-
----
 
 ---
 
