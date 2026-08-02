@@ -15,12 +15,13 @@ This factory wires together the sandbox components:
 from contextlib import asynccontextmanager
 
 import structlog
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 
 logger = structlog.get_logger()
 
 from src.config import settings
 from src.cache.redis_client import RedisCache
+from src.gateway.auth import verify_api_key
 from src.gateway.middleware import TimingMiddleware
 from src.gateway.router import router as gateway_router
 from src.guardrails.engine import GuardrailEngine
@@ -68,7 +69,7 @@ def create_app() -> FastAPI:
     )
 
     app.add_middleware(TimingMiddleware)
-    app.include_router(gateway_router, prefix="/v1")
+    app.include_router(gateway_router, prefix="/v1", dependencies=[Depends(verify_api_key)])
 
     @app.get("/health", tags=["system"])
     async def health():
