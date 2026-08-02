@@ -21,6 +21,7 @@ logger = structlog.get_logger()
 
 from src.config import settings
 from src.cache.redis_client import RedisCache
+from src.gateway.middleware import TimingMiddleware
 from src.gateway.router import router as gateway_router
 from src.guardrails.engine import GuardrailEngine
 from src.telemetry.logger import setup_logging
@@ -66,6 +67,7 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
+    app.add_middleware(TimingMiddleware)
     app.include_router(gateway_router, prefix="/v1")
 
     @app.get("/health", tags=["system"])
