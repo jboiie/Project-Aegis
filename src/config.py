@@ -34,6 +34,11 @@ class Settings(BaseSettings):
     PORT: int = 8000
     LOG_LEVEL: str = "info"
 
+    # ── Auth ─────────────────────────────────────────────────
+    # Empty (default) = no auth, matches today's local-dev behavior.
+    # Set to require `Authorization: Bearer <key>` on every /v1 request.
+    AEGIS_API_KEY: str = ""
+
     # ── Experiment: Layer ablation ───────────────────────────
     # Set to a subset to disable layers. Examples:
     #   GUARDRAIL_LAYERS=L1            (regex only)
