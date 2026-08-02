@@ -69,7 +69,7 @@ Applies obfuscation transforms to a harmful payload before sending it to the tar
 - ROT13 character substitution
 - Leetspeak (e→3, a→@, i→!, o→0)
 - Word splitting with hyphens or spaces mid-word
-- Unicode homoglyph substitution (planned)
+- Unicode homoglyph substitution (Cyrillic lookalikes)
 
 **What it tests**: Whether the sandbox's ML classifiers (L2 DeBERTa, L3 toxicity) handle
 input transformations. A classifier trained on plain-text examples may not generalize to
