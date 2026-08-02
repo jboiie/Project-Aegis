@@ -15,6 +15,7 @@ from redteam.attacks.encoding import (
     encode_rot13,
     encode_leetspeak,
     encode_word_split,
+    encode_homoglyph,
     ENCODERS,
     BASE_PROMPTS,
 )
@@ -43,6 +44,18 @@ def test_encode_leetspeak_substitutes_known_chars():
 def test_encode_word_split_preserves_short_words():
     result = encode_word_split("a bb ccc")
     assert result == "a bb c_cc"
+
+
+def test_encode_homoglyph_substitutes_known_chars():
+    result = encode_homoglyph("cat")
+    assert result == "саt"  # с, а (Cyrillic) + Latin t (unmapped)
+    assert result != "cat"
+
+
+def test_encode_homoglyph_preserves_unmapped_chars():
+    result = encode_homoglyph("hack")
+    assert result[0] == "h"  # unmapped, unchanged
+    assert result[-1] == "k"  # unmapped, unchanged
 
 
 def test_all_encoders_produce_nonempty_output():
