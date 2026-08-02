@@ -240,15 +240,20 @@ Bypasses discovered in one campaign inform the next. The pipeline logs every suc
 
 ## 📈 Telemetry Dashboard
 
-The Streamlit dashboard visualizes the pipeline's output in real time:
+A Streamlit dashboard reads live telemetry from Supabase (`aegis_events`, logged by every sandbox request via `src/telemetry/supabase_client.py`):
 
-- **Attack counters**: Total fired, bypassed, blocked, per-strategy breakdown
-- **ASR over time**: Rolling attack success rate across campaign runs
-- **Per-layer breakdown**: Which guardrail layer is catching the most — and which is leaking
-- **Bypass log**: Every successful bypass with prompt, strategy, and response
+- **Metric cards**: total requests, blocked count, block rate, avg latency
+- **Requests over time**: hourly-bucketed total vs. blocked counts
+- **Blocked-reason breakdown**: pie chart of which guardrail check fired
+- **Recent events table**: last 500 events (prompt hashed, not raw text)
+
+Query + aggregation logic lives in `dashboard/data.py` (unit-tested, no network needed); `dashboard/app.py` is the thin Streamlit rendering layer.
+
+> **Note:** `aegis_events` logs all live sandbox traffic, not a labeled red-team run — so "block rate" here is a live pass/block ratio, not the Attack Success Rate reported in Tables 1–4 (that comes from `redteam/evaluation/metrics.py` against a known attack corpus).
 
 ```bash
-pip install -r dashboard/requirements.txt
+pip install -e ".[dashboard]"
+# set SUPABASE_URL / SUPABASE_KEY in .env, then run scripts/setup_supabase.sql once
 streamlit run dashboard/app.py
 # → Opens at http://localhost:8501
 ```
@@ -359,8 +364,9 @@ project-aegis/
 │   └── utils/
 │       └── embeddings.py       # MiniLM embedding model
 │
-├── dashboard/                  # Streamlit: visualizes pipeline output
-│   └── app.py
+├── dashboard/                  # Streamlit: visualizes live sandbox telemetry
+│   ├── app.py                  # Streamlit rendering layer
+│   └── data.py                 # Supabase query + pandas aggregation (unit-tested)
 │
 ├── tests/                      # Pytest test suite
 ├── scripts/
