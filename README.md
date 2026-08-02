@@ -19,7 +19,7 @@
 
 ---
 
-> **PAIR (adaptive LLM attacker) achieved a 95% bypass rate against our full guardrail stack — in an average of 2 iterations per goal.** Static ML classifiers that cut a fixed-corpus attack rate from 87% to 25% are nearly useless against an attacker that receives rejection feedback and rephrases. That gap is the core finding. Adding session-level rejection tracking (breaking the feedback loop PAIR depends on) cut that back down to 20% — see [Table 4](#-findings). Everything else in this repo is measuring where and why it happens.
+> **PAIR (adaptive LLM attacker) achieved a 95% bypass rate against our full guardrail stack — in an average of 2 iterations per goal.** Static ML classifiers that cut a fixed-corpus attack rate from 87% to 25% are nearly useless against an attacker that receives rejection feedback and rephrases. That gap is the core finding. Adding session-level rejection tracking (SessionGuard) cut PAIR's ASR from 95% to 20% — a 75pp reduction from breaking the iterative feedback loop PAIR's strategy depends on — see [Table 4](#-findings). Everything else in this repo is measuring where and why it happens.
 
 ---
 
