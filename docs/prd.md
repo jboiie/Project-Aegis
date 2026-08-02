@@ -70,7 +70,7 @@ Obfuscation via Base64, ROT13, leetspeak, character splitting, Unicode substitut
 Tests whether semantic classifiers (L2/L3) can handle input transformations.
 Reference: Wei et al. 2023.
 
-**PAIR — Prompt Automatic Iterative Refinement** (In Progress)
+**PAIR — Prompt Automatic Iterative Refinement** (Implemented)
 An attacker LLM (Llama 3 via Groq free tier) receives a target behavior and iteratively rephrases
 attack prompts based on feedback from the sandbox's response. The loop continues until a bypass is
 produced or max iterations reached.
