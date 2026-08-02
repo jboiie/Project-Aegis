@@ -3,10 +3,10 @@ name = "project-aegis"
 version = "0.1.0"
 description = "Autonomous LLM Security Proxy & Red-Teaming Pipeline"
 readme = "README.md"
-license = { text = "MIT" }
+license = { text = "All Rights Reserved" }
 requires-python = ">=3.10"
 authors = [
-    { name = "Your Name", email = "your.email@example.com" },
+    { name = "Jai", email = "jai19kharb@gmail.com" },
 ]
 
 dependencies = [
