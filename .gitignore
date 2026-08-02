@@ -50,3 +50,6 @@ dump.rdb
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Local-only docs (not for GitHub)
+docs/understanding_aegis.html
