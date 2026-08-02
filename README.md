@@ -6,7 +6,7 @@
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688.svg)](https://fastapi.tiangolo.com)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![License: All Rights Reserved](https://img.shields.io/badge/License-All%20Rights%20Reserved-red.svg)](LICENSE)
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED.svg)](https://docs.docker.com/compose/)
 [![Tests](https://github.com/jboiie/Project-Aegis/actions/workflows/tests.yml/badge.svg)](https://github.com/jboiie/Project-Aegis/actions/workflows/tests.yml)
 [![Docker Verify](https://github.com/jboiie/Project-Aegis/actions/workflows/docker-verify.yml/badge.svg)](https://github.com/jboiie/Project-Aegis/actions/workflows/docker-verify.yml)
@@ -560,24 +560,9 @@ A reinforcement-learning-based attacker (e.g., a PPO-trained policy maximizing A
 
 ---
 
-## 🤝 Contributing
-
-```bash
-# Setup dev environment
-pip install -e ".[dev]"
-
-# Run tests
-pytest
-
-# Lint
-ruff check src/ redteam/
-```
-
----
-
 ## 📄 License
 
-MIT — see [LICENSE](LICENSE).
+All Rights Reserved — publicly viewable, not licensed for use, copying, modification, or redistribution without permission. See [LICENSE](LICENSE).
 
 ---
 
