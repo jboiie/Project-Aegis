@@ -8,10 +8,12 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688.svg)](https://fastapi.tiangolo.com)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED.svg)](https://docs.docker.com/compose/)
+[![Tests](https://github.com/jboiie/Project-Aegis/actions/workflows/tests.yml/badge.svg)](https://github.com/jboiie/Project-Aegis/actions/workflows/tests.yml)
+[![Docker Verify](https://github.com/jboiie/Project-Aegis/actions/workflows/docker-verify.yml/badge.svg)](https://github.com/jboiie/Project-Aegis/actions/workflows/docker-verify.yml)
 
 *Autonomous LLM red-teaming pipeline with a live guardrail sandbox as its attack target.*
 
-[Findings](#-findings) · [Pipeline](#-red-teaming-pipeline) · [Architecture](#-architecture) · [Attack Strategies](#-attack-strategies) · [The Sandbox](#-the-target-sandbox) · [Point At Your Own Endpoint](#-point-at-your-own-endpoint) · [Roadmap](#-roadmap)
+[Findings](#-findings) · [Pipeline](#-red-teaming-pipeline) · [Architecture](#-architecture) · [Attack Strategies](#-attack-strategies) · [The Sandbox](#-the-target-sandbox) · [Point At Your Own Endpoint](#-point-at-your-own-endpoint) · [Deploy](DEPLOY.md) · [Roadmap](#-roadmap)
 
 </div>
 
@@ -30,7 +32,7 @@ LLM guardrails deployed in production are evaluated once at release — then lef
 **Project Aegis** is the evaluation pipeline that fills that gap:
 
 1. **The Red-Teaming Pipeline** — An autonomous attack engine that generates, fires, and measures jailbreak attacks across multiple strategies (template, encoding, PAIR), producing real ASR metrics
-2. **The Aegis Sandbox** — A live FastAPI proxy with a layered guardrail stack (regex → DeBERTa → toxicity → PII), deployed as a *controlled target environment* for the pipeline to attack and measure
+2. **The Aegis Sandbox** — A live FastAPI proxy with a layered guardrail stack (SessionGuard → SemanticCache → regex → DeBERTa → toxicity → PII → OutputGuard), deployed as a *controlled target environment* for the pipeline to attack and measure
 
 The sandbox has known coverage gaps — the same gaps present in real production guardrail stacks. Its job is to give the pipeline something real to attack and measure.
 
@@ -107,7 +109,7 @@ The sandbox has known coverage gaps — the same gaps present in real production
 | **Prompt Exfiltration** | Asking the model to output its internal instructions | Model either leaks actual system prompt or hallucinates a plausible one — both are failures |
 | **Obfuscation (Base64/Leetspeak)** | Encoding malicious payload before sending | Unpredictable: model may decode and comply, decode and hallucinate, or refuse. L2/L3 classifiers trained on plaintext may not generalize |
 
-**What this means for the sandbox design:** L1 regex catches known templates but misses authority framing. L2 DeBERTa injection detection must score *combinations* (authority claim + sensitive topic) rather than isolated keywords. The output scanner (not yet implemented) is necessary because prompt exfiltration attacks succeed at the response stage, not the input stage.
+**What this means for the sandbox design:** L1 regex catches known templates but misses authority framing. L2 DeBERTa injection detection must score *combinations* (authority claim + sensitive topic) rather than isolated keywords. The output scanner is necessary because prompt exfiltration attacks succeed at the response stage, not the input stage — implemented as OutputGuard (`src/guardrails/output.py`) in Phase D.
 
 ---
 
@@ -137,6 +139,12 @@ The pipeline is the primary system. The sandbox is what it attacks.
 ║                                                                  ║
 ║  ┌────────────────────────────────────────────────────────────┐  ║
 ║  │  POST /v1/chat/completions (OpenAI-compatible endpoint)    │  ║
+║  │  optional: Authorization: Bearer <AEGIS_API_KEY>            │  ║
+║  └────────────────────┬───────────────────────────────────────┘  ║
+║                       │                                          ║
+║  ┌────────────────────▼───────────────────────────────────────┐  ║
+║  │  SessionGuard — rejection-velocity lockout                 │  ║
+║  │  (breaks PAIR's adaptive feedback loop)                    │  ║
 ║  └────────────────────┬───────────────────────────────────────┘  ║
 ║                       │                                          ║
 ║  ┌────────────────────▼───────────────────────────────────────┐  ║
@@ -152,9 +160,14 @@ The pipeline is the primary system. The sandbox is what it attacks.
 ║  └────────────────────┬───────────────────────────────────────┘  ║
 ║                       │                                          ║
 ║           Blocked ◀───┴───▶ Forwarded to Groq LLM               ║
-╚══════════════════════════════════════════════════════════════════╝
-                              │
-                              ▼
+║                                     │                             ║
+║                       ┌─────────────▼──────────────┐             ║
+║                       │  OutputGuard — dual-pass     │             ║
+║                       │  response screening          │             ║
+║                       └─────────────┬──────────────┘             ║
+╚═════════════════════════════════════╪══════════════════════════════╝
+                                      │
+                                      ▼
               ┌───────────────────────────────┐
               │  Supabase (PostgreSQL)         │
               │  Attack logs, verdicts, ASR   │
@@ -223,12 +236,12 @@ Bypasses discovered in one campaign inform the next. The pipeline logs every suc
 | Strategy | Technique | Complexity | Status | Reference |
 |---|---|---|---|---|
 | **Template** | Known jailbreaks (DAN, AIM, role-play, hypothetical framing) | Low | ✅ Implemented | [JailbreakChat](https://jailbreakchat.com) |
-| **Encoding** | Base64, ROT13, leetspeak, word-split obfuscation | Low | ✅ Implemented | [Wei et al. 2023](https://arxiv.org/abs/2307.15043) |
+| **Encoding** | Base64, ROT13, leetspeak, word-split, Unicode homoglyph obfuscation | Low | ✅ Implemented | [Wei et al. 2023](https://arxiv.org/abs/2307.15043) |
 | **PAIR** | LLM-vs-LLM iterative refinement — attacker LLM rephrases until target breaks | Medium | ✅ Implemented | [Chao et al. 2023](https://arxiv.org/abs/2310.08419) |
 
 **Template attacks** inject known jailbreak templates (DAN, AIM, developer mode, etc.) into the sandbox. These test whether L1 regex rules are comprehensive and whether L2/L3 catch paraphrased variants.
 
-**Encoding attacks** obfuscate malicious payloads using Base64, ROT13, leetspeak, and character splitting. These test whether ML classifiers handle semantically equivalent inputs that bypass literal pattern matching.
+**Encoding attacks** obfuscate malicious payloads using Base64, ROT13, leetspeak, character splitting, and Unicode homoglyph substitution. These test whether ML classifiers handle semantically equivalent inputs that bypass literal pattern matching.
 
 **PAIR** (Prompt Automatic Iterative Refinement) uses a separate attacker LLM (Groq Llama 3, free tier) to iteratively rephrase a harmful request until the target sandbox responds. Each failed attempt informs the next rephrase. This tests adaptive resilience — can the guardrails hold against an LLM specifically targeting their failure modes?
 
@@ -262,11 +275,11 @@ streamlit run dashboard/app.py
 
 ## 🧱 The Target Sandbox
 
-The Aegis Sandbox is a FastAPI proxy that exposes an OpenAI-compatible endpoint. It runs a four-layer guardrail stack and a semantic cache against Redis. It exists so the pipeline has a real, instrumented system to attack.
+The Aegis Sandbox is a FastAPI proxy that exposes an OpenAI-compatible endpoint. It runs SessionGuard, a semantic cache against Redis, a four-layer guardrail stack (L1-L4), and OutputGuard on the response. It exists so the pipeline has a real, instrumented system to attack.
 
 ### Sandbox Setup
 
-**Prerequisites:** Python 3.11+, [Miniconda](https://docs.conda.io/en/latest/miniconda.html), a [Groq API key](https://console.groq.com/keys) (free). No Docker required.
+**Prerequisites:** Python 3.11+, [Miniconda](https://docs.conda.io/en/latest/miniconda.html), a [Groq API key](https://console.groq.com/keys) (free). No Docker required — for a Docker-based deployment instead, see [DEPLOY.md](DEPLOY.md).
 
 ```bash
 git clone https://github.com/jboiie/Project-Aegis.git
@@ -311,14 +324,17 @@ curl -s -X POST http://localhost:8000/v1/chat/completions \
 
 ### Sandbox Guardrail Stack
 
-The sandbox implements four defense layers with known coverage gaps — the same gaps present in real production guardrail stacks. The pipeline's job is to find where each one fails.
+The sandbox implements the input-side L1-L4 layers plus session- and output-level defenses, each with known coverage gaps — the same gaps present in real production guardrail stacks. The pipeline's job is to find where each one fails.
 
 | Layer | Method | What It Catches | What It Misses |
 |---|---|---|---|
+| SessionGuard | Rejection-velocity lockout (3 rejections / 5min) | Sustained adaptive-attacker feedback loops (PAIR) | Single-shot attacks, low-frequency probing |
+| L0 SemanticCache | Embedding similarity vs. known-blocked prompts (Redis + MiniLM) | Near-duplicate rephrasings of already-blocked prompts | Genuinely novel phrasing each attempt (PAIR mostly evades this) |
 | L1 Regex | Pattern matching on known jailbreak strings | DAN, AIM, explicit templates | Paraphrased or encoded variants |
 | L2 DeBERTa | Fine-tuned injection classifier | Semantic injection attempts | Novel phrasings outside training distribution |
 | L3 Toxicity | Toxic-BERT classifier | Overtly harmful content | Harmful content framed as hypothetical or fiction |
 | L4 PII | Regex + NER redaction | Emails, phones, credit cards | Novel PII formats, contextual leakage |
+| OutputGuard | Dual-pass response screening | System-prompt leaks, harmful content generated in the response | Responses that don't match scanned leak/harm patterns |
 
 ---
 
@@ -329,13 +345,16 @@ project-aegis/
 │
 ├── redteam/                    ← CORE PIPELINE — primary entrypoint
 │   ├── runner.py               # Main CLI: generates and fires attacks, reports ASR
+│   ├── phase_b.py              # Phase B: external baseline comparison (Llama Guard)
+│   ├── phase_c.py              # Phase C: PAIR campaign runner
 │   ├── attacks/
 │   │   ├── base.py             # Abstract attack interface
 │   │   ├── template.py         # Template attacks (DAN, AIM, role-play)
-│   │   ├── encoding.py         # Encoding attacks (Base64, ROT13, leetspeak)
+│   │   ├── encoding.py         # Encoding: Base64, ROT13, leetspeak, homoglyph
 │   │   └── pair.py             # PAIR: LLM-vs-LLM iterative refinement
 │   ├── evaluation/
-│   │   └── metrics.py          # ASR, precision, recall, F1 computation
+│   │   ├── metrics.py          # ASR, precision, recall, F1 computation
+│   │   └── run_eval.py         # Labeled-set CLI runner (real precision/recall/F1)
 │   └── README.md               # Pipeline internals: strategies, metrics, feedback loop
 │
 ├── src/                        ← SANDBOX TARGET — the system the pipeline attacks
@@ -345,16 +364,19 @@ project-aegis/
 │   │   ├── router.py           # OpenAI-compatible /v1/chat/completions
 │   │   ├── proxy.py            # Forward to Groq (after guardrails pass)
 │   │   ├── schemas.py          # Pydantic request/response models
-│   │   └── middleware.py       # Request timing & logging
-│   ├── guardrails/             # Attack surface — four-layer defense stack
-│   │   ├── engine.py           # Orchestrates L1→L4 screening
+│   │   ├── middleware.py       # Request timing & logging
+│   │   └── auth.py             # Optional AEGIS_API_KEY shared-key auth
+│   ├── guardrails/             # Attack surface — defense stack
+│   │   ├── engine.py           # Orchestrates SessionGuard → L1→L4 → OutputGuard
 │   │   ├── regex_rules.py      # L1: Fast pattern matching (< 1ms)
 │   │   ├── injection.py        # L2: DeBERTa classifier (~10ms)
 │   │   ├── toxicity.py         # L3: Toxicity detection (~10ms)
-│   │   └── pii.py              # L4: PII regex + redaction
+│   │   ├── pii.py              # L4: PII regex + redaction
+│   │   ├── session.py          # SessionGuard: rejection-velocity lockout
+│   │   └── output.py           # OutputGuard: dual-pass response screening
 │   ├── cache/                  # Semantic caching layer
 │   │   ├── redis_client.py     # Async Redis connection
-│   │   └── semantic.py         # MiniLM embedding cache
+│   │   └── semantic.py         # MiniLM embedding cache (L0)
 │   ├── llm/                    # LLM provider (sandbox's backend)
 │   │   ├── base.py             # Abstract provider interface
 │   │   └── groq.py             # Groq API client
@@ -368,16 +390,25 @@ project-aegis/
 │   ├── app.py                  # Streamlit rendering layer
 │   └── data.py                 # Supabase query + pandas aggregation (unit-tested)
 │
-├── tests/                      # Pytest test suite
+├── tests/                      # Pytest test suite (48 tests)
 ├── scripts/
-│   └── setup_supabase.sql      # Database schema for attack log
+│   ├── setup_supabase.sql              # Database schema for attack log
+│   └── generate_labeled_eval_set.py    # Builds data/labeled_eval_set.jsonl (seed=42)
+├── data/
+│   └── labeled_eval_set.jsonl  # 25 attack + 25 benign prompts, ground-truth labeled
 ├── models/                     # Local model weights (gitignored)
 ├── docs/
 │   ├── prd.md                  # North-star vision (production-grade pipeline)
-│   └── resource.md             # Active build plan (resource-constrained)
+│   ├── resource.md             # Historical build plan (resource-constrained) — phases complete
+│   ├── technical_report.md     # Full write-up: methodology, findings, empirical validation
+│   └── prior_work.md           # Predecessor project findings that motivated the sandbox design
+├── .github/workflows/
+│   ├── tests.yml                # Runs the pytest suite on push/PR
+│   └── docker-verify.yml        # Builds + smoke-tests the Docker container on push/PR
 │
 ├── docker-compose.yml          # Sandbox stack: FastAPI + Redis
 ├── Dockerfile                  # Container image for the sandbox
+├── DEPLOY.md                   # Docker deployment guide: quick start, auth, config
 ├── pyproject.toml              # Python project config & dependencies
 └── .env.example                # Environment variable template
 ```
@@ -462,7 +493,7 @@ Each bypass is logged with: the exact prompt that worked, the attack strategy th
 
 ## 🔮 Roadmap
 
-All three research phases are complete. The pipeline was built around one constraint: produce real, defensible ASR numbers against a live target — not synthetic benchmarks, not self-reported estimates. Everything below tracks how that was executed.
+All four research phases are complete. The pipeline was built around one constraint: produce real, defensible ASR numbers against a live target — not synthetic benchmarks, not self-reported estimates. Everything below tracks how that was executed.
 
 ### Phase A — Baseline ASR ✅
 Run the pipeline against the sandbox with layers enabled incrementally. Each configuration uses the same attack set, same prompt corpus.
@@ -499,6 +530,19 @@ Implement and empirically validate defenses against the PAIR bypass rate found i
 - [x] Fix schema bug in SessionGuard's lockout path that crashed requests with a 500 instead of returning a clean block
 - [x] Re-run PAIR (same seed=42, 20 goals) against full stack + all three countermeasures: 95.00% → 20.00% ASR
 - [x] Fill in Table 4 (Findings section)
+
+### Phase E — Deployment & Hardening ✅
+Turn the validated research stack into something a company can actually run.
+
+- [x] Wire live Supabase telemetry into the request path (`app.state.telemetry`, `TelemetryClient.log_event`)
+- [x] Build a real Streamlit dashboard against `aegis_events` (`dashboard/data.py` + `dashboard/app.py`) — verified live against real sandbox traffic
+- [x] Register `TimingMiddleware` (was defined but never activated) — `X-Request-ID` / `X-Process-Time-Ms` headers now real
+- [x] Add optional `AEGIS_API_KEY` shared-key auth on `/v1/*` (`/health` stays open for healthchecks)
+- [x] Fix Docker: `HF_HOME` model-cache persistence, `REDIS_HOST` compose-network bug, `.dockerignore`
+- [x] Verify Docker for real via CI (`.github/workflows/docker-verify.yml`) — no local Docker/WSL install required
+- [x] Add `DEPLOY.md`: drop-in proxy-container quick start, auth, config reference
+- [x] Add CI test job (`.github/workflows/tests.yml`) — 48 tests on every push/PR
+- [x] Implement the previously-planned Unicode homoglyph encoding attack
 
 ### Future Directions
 
