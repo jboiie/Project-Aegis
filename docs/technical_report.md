@@ -10,7 +10,7 @@
 
 As Large Language Models (LLMs) are deployed into production environments, multi-layer guardrail systems (combining heuristics, ML classifiers, and domain filters) are increasingly relied upon to filter malicious inputs. **Project Aegis** is an autonomous LLM vulnerability evaluation pipeline designed to empirically test and benchmark guardrail efficacy under both static and adaptive attack conditions.
 
-Through three rigorous experimental phases (n=100 per strategy, fixed seed=42), we evaluated the Aegis multi-layer sandbox against fixed-corpus attacks, external commercial baselines (Meta's Llama Prompt Guard 2), and LLM-driven adaptive red-teaming (PAIR).
+Through four rigorous experimental phases (n=100 per strategy, fixed seed=42), we evaluated the Aegis multi-layer sandbox against fixed-corpus attacks, external commercial baselines (Meta's Llama Prompt Guard 2), LLM-driven adaptive red-teaming (PAIR), and — after PAIR broke the static stack — a set of stateful countermeasures re-tested against the same adaptive attacker.
 
 ### Core Findings
 
@@ -35,11 +35,22 @@ Through three rigorous experimental phases (n=100 per strategy, fixed seed=42), 
 
 ## 1. System Architecture & Methodology
 
-The Aegis sandbox implements an instrumented OpenAI-compatible gateway (`/v1/chat/completions`) backed by a four-layer input defense stack:
+The Aegis sandbox implements an instrumented OpenAI-compatible gateway (`/v1/chat/completions`). Section 2 below evaluates the original four-layer input defense stack in isolation (Phases A-C); Section 3 covers the session- and output-level countermeasures added in Phase D. The full live request path is:
 
 ```
 [ Incoming Request ]
          │
+         ▼
+ ┌───────────────┐
+ │ SessionGuard  │ ── (Rejection-velocity lockout — Phase D)
+ └───────┬───────┘
+         │ Passed
+         ▼
+ ┌───────────────┐
+ │ L0: Semantic  │ ── (Redis + MiniLM near-duplicate block — Phase D)
+ │ Cache         │
+ └───────┬───────┘
+         │ Passed
          ▼
  ┌───────────────┐
  │ L1: Regex     │ ── (Exact phrase matching: DAN, ignore instructions)
@@ -62,6 +73,14 @@ The Aegis sandbox implements an instrumented OpenAI-compatible gateway (`/v1/cha
          │ Passed
          ▼
 [ Target LLM (Groq / Llama 3.3 70B) ]
+         │
+         ▼
+ ┌───────────────┐
+ │ OutputGuard   │ ── (Dual-pass response screening — Phase D)
+ └───────┬───────┘
+         │
+         ▼
+[ Response to Client ]
 ```
 
 ---
@@ -118,7 +137,7 @@ Previously blocked prompts are embedded via `sentence-transformers/all-MiniLM-L6
 ### 2. Stateful Session & Rejection Tracking (`src/guardrails/session.py`)
 Attacker LLMs rely on iterative feedback (`[BLOCKED]` responses). By tracking client session identifiers and monitoring rejection velocity ($\ge 3$ blocked attempts within 5 minutes), the gateway issues a temporary session ban, breaking the PAIR feedback loop.
 
-### 3. Dual-Pass Output Guardrails (`src/gateway/router.py`)
+### 3. Dual-Pass Output Guardrails (`src/guardrails/output.py`)
 When input classifiers fail against heavily obfuscated prompts, output verification screens the target LLM's response prior to client delivery. If the LLM generates actionable harmful instructions or refusal failures, the output is redacted.
 
 ### Empirical Validation
