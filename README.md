@@ -401,7 +401,8 @@ project-aegis/
 │   ├── prd.md                  # North-star vision (production-grade pipeline)
 │   ├── resource.md             # Historical build plan (resource-constrained) — phases complete
 │   ├── technical_report.md     # Full write-up: methodology, findings, empirical validation
-│   └── prior_work.md           # Predecessor project findings that motivated the sandbox design
+│   ├── prior_work.md           # Predecessor project findings that motivated the sandbox design
+│   └── understanding_aegis.md  # Plain-English explainer: motivation, methodology, critiques, full build history
 ├── .github/workflows/
 │   ├── tests.yml                # Runs the pytest suite on push/PR
 │   └── docker-verify.yml        # Builds + smoke-tests the Docker container on push/PR
