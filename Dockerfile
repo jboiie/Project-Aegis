@@ -2,6 +2,10 @@ FROM python:3.11-slim AS base
 
 WORKDIR /app
 
+# Persist downloaded model weights in the mounted ./models volume instead of
+# re-downloading ~1GB from HuggingFace on every container restart.
+ENV HF_HOME=/app/models
+
 # System deps for torch CPU
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
