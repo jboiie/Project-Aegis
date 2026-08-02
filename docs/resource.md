@@ -1,8 +1,10 @@
 Resource-Constrained Implementation Plan
 
-> This is the ACTIVE build plan. It maps the north-star PRD down to a student laptop
-> and ~₹3,500 budget using free-tier services and quantized models.
-> Priority: Phase A (baseline ASR numbers) → Phase B (external comparison) → Phase C (PAIR).
+> **This build plan is COMPLETE** — Phases A-D all shipped (see README Roadmap for final results
+> and Tables 1-4). Kept as a historical record of the original plan; some details below
+> (e.g. "not yet wired", "pending") describe the pre-implementation state, not current status.
+> It mapped the north-star PRD down to a student laptop and ~₹3,500 budget using free-tier
+> services and quantized models.
 
 ---
 
