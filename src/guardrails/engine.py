@@ -10,10 +10,13 @@ is not to build a perfect defender — it is to build an honest, measurable one 
 the pipeline can continuously probe and report against.
 
 Defense layers in order of execution:
-  L1: Regex pre-filter       — catches explicit jailbreak templates (< 1ms)
-  L2: DeBERTa injection      — catches semantic injection attempts (~10ms)
-  L3: Toxicity classifier    — catches overtly harmful content (~10ms)
-  L4: PII redaction          — catches standard PII formats (~5ms)
+  SessionGuard: rejection-velocity lockout — breaks adaptive-attacker feedback loops
+  L0: Semantic cache          — blocks near-duplicates of known-blocked prompts (< 5ms)
+  L1: Regex pre-filter        — catches explicit jailbreak templates (< 1ms)
+  L2: DeBERTa injection       — catches semantic injection attempts (~10ms)
+  L3: Toxicity classifier     — catches overtly harmful content (~10ms)
+  L4: PII redaction           — catches standard PII formats (~5ms)
+  OutputGuard: dual-pass response screening — catches response-stage failures (see below)
 
 Short-circuit design: cheap layers run first and exit early on obvious attacks,
 saving inference cycles for the harder cases that reach L2/L3.
@@ -27,7 +30,7 @@ Empirical basis for this layer design (from prior pair-lab and prompt-autopsy ru
   - "Educational purposes" framing: shifts model into teacher mode.
     L3 toxicity classifier must catch the harmful content of the *response*
     even when the *input* framing appears benign (out-of-scope for input-only
-    classifiers — see TODO for output scanner).
+    classifiers — caught by OutputGuard instead, see below).
   - Inline token injection: `###SYSTEM`, `[INST]` injected into user prompt.
     L1 regex handles this via structural token pattern matching.
   - Obfuscation (Base64, leetspeak): encoded payloads cause unpredictable
@@ -39,8 +42,8 @@ Empirical basis for this layer design (from prior pair-lab and prompt-autopsy ru
   - Harmful content wrapped in multi-step fictional narratives (L3 miss)
   - Prompt exfiltration: asking the model to repeat its system prompt.
     This is a *response-layer* failure, not an input-layer failure.
-    TODO: output scanner — scan responses for system prompt leak patterns
-    and functional code execution when input was flagged medium/high risk.
+    Caught by OutputGuard (src/guardrails/output.py), which scans responses
+    for system prompt leak patterns after the LLM call, not the input.
 
 See docs/prior_work.md for the full empirical findings that motivated this design.
 """
