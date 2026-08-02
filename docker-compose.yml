@@ -7,6 +7,10 @@ services:
       - "8000:8000"
     env_file:
       - .env
+    environment:
+      # Overrides .env's REDIS_HOST=localhost — inside the compose network
+      # Redis is reachable at the service name, not localhost.
+      - REDIS_HOST=redis
     depends_on:
       redis:
         condition: service_healthy
