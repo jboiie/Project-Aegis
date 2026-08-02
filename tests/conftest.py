@@ -1,7 +1,7 @@
 """Shared test fixtures."""
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi.testclient import TestClient
 from src.main import app
 from src.gateway.schemas import SafetyVerdict, GuardrailCheck
@@ -31,4 +31,8 @@ def client():
     app.state.cache = mock_cache
     app.state.telemetry = mock_telemetry
 
-    return TestClient(app)
+    # Requests that pass guardrails would otherwise hit the real Groq API —
+    # mock it so the suite doesn't depend on network access or a real key.
+    mock_llm_response = {"choices": [{"message": {"content": "mocked response"}}]}
+    with patch("src.gateway.router.forward_to_llm", AsyncMock(return_value=mock_llm_response)):
+        yield TestClient(app)
