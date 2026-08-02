@@ -55,11 +55,21 @@ def encode_word_split(text: str) -> str:
     return " ".join(f"{w[0]}_{w[1:]}" if len(w) > 2 else w for w in text.split())
 
 
+def encode_homoglyph(text: str) -> str:
+    """Substitute lookalike Cyrillic characters to evade text-based classifiers."""
+    homoglyph_map = {
+        "a": "а", "c": "с", "e": "е", "i": "і",
+        "o": "о", "p": "р", "x": "х", "y": "у",
+    }
+    return "".join(homoglyph_map.get(c.lower(), c) for c in text)
+
+
 ENCODERS = {
     "base64": encode_base64,
     "rot13": encode_rot13,
     "leetspeak": encode_leetspeak,
     "word_split": encode_word_split,
+    "homoglyph": encode_homoglyph,
 }
 
 
