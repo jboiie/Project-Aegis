@@ -27,13 +27,16 @@ python -m redteam.runner \
 ```
 redteam/
 ├── runner.py               # Primary entrypoint — orchestrates campaigns, reports ASR
+├── phase_b.py              # Phase B: external baseline comparison (Llama Guard)
+├── phase_c.py              # Phase C: PAIR campaign runner
 ├── attacks/
 │   ├── base.py             # Abstract BaseAttack interface all strategies implement
 │   ├── template.py         # Template attacks: DAN, AIM, role-play, hypothetical
-│   ├── encoding.py         # Encoding attacks: Base64, ROT13, leetspeak, word-split
+│   ├── encoding.py         # Encoding: Base64, ROT13, leetspeak, word-split, homoglyph
 │   └── pair.py             # PAIR: LLM-vs-LLM iterative refinement (Phase C)
 └── evaluation/
-    └── metrics.py          # ASR, precision, recall, F1 computation
+    ├── metrics.py          # ASR, precision, recall, F1 computation
+    └── run_eval.py         # Labeled-set CLI runner (real precision/recall/F1)
 ```
 
 ---
