@@ -1,0 +1,28 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    env:
+      # No real Groq/Supabase needed — the suite mocks the LLM call and
+      # ML pipelines directly. GROQ_API_KEY just has to pass config.py's
+      # non-placeholder check.
+      GROQ_API_KEY: gsk_ci_dummy_key
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -e ".[dev,dashboard,redteam]"
+
+      - name: Run tests
+        run: pytest tests/ -q
