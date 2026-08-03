@@ -101,8 +101,8 @@ class TemplateAttack(BaseAttack):
 
         return AttackResult(
             strategy="template",
-            prompt=prompt[:200],  # Truncate for readability
-            response=response_data.get("content", "")[:200],
+            prompt=prompt,
+            response=response_data.get("content", ""),
             bypassed=not blocked,
             confidence=0.9 if not blocked else 1.0,
             metadata={

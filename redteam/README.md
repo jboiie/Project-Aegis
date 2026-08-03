@@ -20,6 +20,10 @@ python -m redteam.runner \
   --attempts 100
 ```
 
+Pass `--report reports/campaign.md` to write a structured Markdown report (executive summary,
+per-strategy ASR, full bypass detail, block-reason breakdown, recommendations) after the campaign
+finishes — see `report.py`.
+
 ---
 
 ## Directory Structure
@@ -27,6 +31,7 @@ python -m redteam.runner \
 ```
 redteam/
 ├── runner.py               # Primary entrypoint — orchestrates campaigns, reports ASR
+├── report.py               # --report: renders a campaign's results as a Markdown report
 ├── phase_b.py              # Phase B: external baseline comparison (Llama Guard)
 ├── phase_c.py              # Phase C: PAIR campaign runner
 ├── attacks/

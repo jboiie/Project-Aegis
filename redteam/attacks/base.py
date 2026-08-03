@@ -21,6 +21,7 @@ class AttackResult:
     bypassed: bool          # True if the attack got through
     confidence: float       # How confident we are in the bypass assessment
     metadata: dict = None   # Strategy-specific metadata
+    timestamp: str = ""     # ISO 8601, stamped by the runner when the result comes back
 
     def __post_init__(self):
         if self.metadata is None:

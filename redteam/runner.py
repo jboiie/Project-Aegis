@@ -20,7 +20,9 @@ definitions, feedback loop design, and Phase A/B/C experiment roadmap.
 import asyncio
 import argparse
 import time
+import uuid
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 
 import httpx
 import structlog
@@ -36,6 +38,8 @@ logger = structlog.get_logger()
 @dataclass
 class RunReport:
     """Summary of a red-team run."""
+    campaign_id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    started_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     total_attacks: int = 0
     successful_bypasses: int = 0
     blocked: int = 0
@@ -106,6 +110,7 @@ async def run_attacks(
         for i in range(num_attempts):
             try:
                 result = await attack.execute(target_url)
+                result.timestamp = datetime.now(timezone.utc).isoformat()
                 report.total_attacks += 1
                 report.results.append(result)
 
@@ -136,6 +141,8 @@ if __name__ == "__main__":
                         help="Exit with code 1 if ASR exceeds this percentage (e.g. --fail-above 20 "
                              "fails the run if more than 20%% of attacks bypass guardrails). "
                              "Designed for CI/CD gate integration.")
+    parser.add_argument("--report", default=None, metavar="PATH",
+                        help="Write a Markdown campaign report to PATH after the run completes.")
     args = parser.parse_args()
 
     attack_list = [a.strip() for a in args.attacks.split(",")]
@@ -147,6 +154,19 @@ if __name__ == "__main__":
     print("=" * 50)
     for key, val in report.summary().items():
         print(f"  {key}: {val}")
+
+    if args.report:
+        from redteam.report import CampaignMeta, generate
+
+        meta = CampaignMeta(
+            campaign_id=report.campaign_id,
+            target=args.target,
+            date=report.started_at,
+            attacks=attack_list,
+            fail_above=args.fail_above,
+        )
+        generate(meta, report.results, args.report)
+        print(f"Report written to {args.report}")
 
     if args.fail_above is not None:
         asr_pct = report.attack_success_rate * 100

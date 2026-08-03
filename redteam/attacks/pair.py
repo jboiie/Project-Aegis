@@ -167,7 +167,7 @@ class PAIRAttack(BaseAttack):
                     return AttackResult(
                         strategy="pair",
                         prompt=candidate_prompt,
-                        response=last_response[:200],
+                        response=last_response,
                         bypassed=True,
                         confidence=0.9,
                         metadata={

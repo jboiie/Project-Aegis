@@ -48,6 +48,9 @@ logs/
 # Redis dump
 dump.rdb
 
+# Generated red-team campaign reports
+reports/
+
 # Streamlit
 .streamlit/secrets.toml
 
