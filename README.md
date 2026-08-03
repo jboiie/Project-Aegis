@@ -345,6 +345,7 @@ project-aegis/
 │
 ├── redteam/                    ← CORE PIPELINE — primary entrypoint
 │   ├── runner.py               # Main CLI: generates and fires attacks, reports ASR
+│   ├── report.py               # --report: renders a campaign's results as a Markdown report
 │   ├── phase_b.py              # Phase B: external baseline comparison (Llama Guard)
 │   ├── phase_c.py              # Phase C: PAIR campaign runner
 │   ├── attacks/
@@ -390,7 +391,7 @@ project-aegis/
 │   ├── app.py                  # Streamlit rendering layer
 │   └── data.py                 # Supabase query + pandas aggregation (unit-tested)
 │
-├── tests/                      # Pytest test suite (48 tests)
+├── tests/                      # Pytest test suite (61 tests)
 ├── scripts/
 │   ├── setup_supabase.sql              # Database schema for attack log
 │   └── generate_labeled_eval_set.py    # Builds data/labeled_eval_set.jsonl (seed=42)
@@ -449,7 +450,8 @@ python -m redteam.runner \
   --attacks template,encoding,pair \
   --attempts 100 \
   --seed 42 \
-  --fail-above 20
+  --fail-above 20 \
+  --report reports/campaign.md
 ```
 
 ### What to Configure
@@ -461,6 +463,7 @@ python -m redteam.runner \
 | `--attempts` | CLI flag | Attacks per strategy. 50–100 gives stable ASR numbers |
 | `--seed` | CLI flag | Fix seed for reproducibility across runs (default: 42) |
 | `--fail-above` | CLI flag | Exit code 1 if ASR exceeds this % — use as a CI/CD gate (e.g. `--fail-above 20`) |
+| `--report` | CLI flag | Path to write a structured Markdown report after the campaign finishes (e.g. `--report reports/campaign.md`) |
 | `GROQ_API_KEY` | `.env` or shell | Required for PAIR's attacker LLM. [Get one free](https://console.groq.com/keys) |
 
 The runner sends OpenAI-format `POST` requests (`{"model": "...", "messages": [{"role": "user", "content": "<attack prompt>"}]}`) and expects a JSON response with a `choices[0].message.content` field. Any proxy that speaks OpenAI-compatible chat completions works without modification.
@@ -479,6 +482,8 @@ RED TEAM REPORT
 ```
 
 Each bypass is logged with: the exact prompt that worked, the attack strategy that generated it, and the full response from your endpoint. Logs go to stdout (structured JSON) and optionally to Supabase if configured.
+
+Pass `--report reports/campaign.md` to get the deliverable a company would actually hand to their security team: a Markdown report with an executive summary, per-strategy ASR table, full detail on every bypass (prompt, response, guardrail verdict), a top-5 block-reason breakdown, and conditional recommendations (e.g. "PAIR bypassed SessionGuard — tighten the lockout threshold"). Rendered entirely from the in-run results — no Supabase dependency, so it works even without telemetry configured. See `redteam/report.py`.
 
 ### Interpreting Results
 
