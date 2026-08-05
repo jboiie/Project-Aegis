@@ -117,68 +117,15 @@ The sandbox has known coverage gaps — the same gaps present in real production
 
 The pipeline is the primary system. The sandbox is what it attacks.
 
-```
-╔══════════════════════════════════════════════════════════════════╗
-║               RED-TEAM PIPELINE (Primary System)                 ║
-║                                                                  ║
-║   ┌──────────────┐   ┌──────────────┐   ┌───────────────────┐   ║
-║   │ Attack       │──▶│ Runner       │──▶│ Evaluation        │   ║
-║   │ Generation   │   │ (Async HTTP) │   │ Engine            │   ║
-║   │              │   │              │   │                   │   ║
-║   │ • Template   │   │ Fires N      │   │ • ASR             │   ║
-║   │ • Encoding   │   │ attacks at   │   │ • Precision       │   ║
-║   │ • PAIR       │   │ target URL   │   │ • Recall / F1     │   ║
-║   └──────────────┘   └──────┬───────┘   │ • Per-layer       │   ║
-║                             │           └───────────────────┘   ║
-║                             │ attacks                           ║
-╚═════════════════════════════╪════════════════════════════════════╝
-                              │
-                              ▼
-╔══════════════════════════════════════════════════════════════════╗
-║              AEGIS SANDBOX (Attack Target)                       ║
-║                                                                  ║
-║  ┌────────────────────────────────────────────────────────────┐  ║
-║  │  POST /v1/chat/completions (OpenAI-compatible endpoint)    │  ║
-║  │  optional: Authorization: Bearer <AEGIS_API_KEY>            │  ║
-║  └────────────────────┬───────────────────────────────────────┘  ║
-║                       │                                          ║
-║  ┌────────────────────▼───────────────────────────────────────┐  ║
-║  │  SessionGuard — rejection-velocity lockout                 │  ║
-║  │  (breaks PAIR's adaptive feedback loop)                    │  ║
-║  └────────────────────┬───────────────────────────────────────┘  ║
-║                       │                                          ║
-║  ┌────────────────────▼───────────────────────────────────────┐  ║
-║  │  Semantic Cache (Redis + MiniLM — < 5ms block)            │  ║
-║  └────────────────────┬───────────────────────────────────────┘  ║
-║                       │                                          ║
-║  ┌────────────────────▼───────────────────────────────────────┐  ║
-║  │  Guardrail Stack (Live Attack Surface)                     │  ║
-║  │  L1: Regex pre-filter    (< 1ms)                          │  ║
-║  │  L2: DeBERTa injection   (~10ms)                          │  ║
-║  │  L3: Toxicity classifier (~10ms)                          │  ║
-║  │  L4: PII redaction       (~5ms)                           │  ║
-║  └────────────────────┬───────────────────────────────────────┘  ║
-║                       │                                          ║
-║           Blocked ◀───┴───▶ Forwarded to Groq LLM               ║
-║                                     │                             ║
-║                       ┌─────────────▼──────────────┐             ║
-║                       │  OutputGuard — dual-pass     │             ║
-║                       │  response screening          │             ║
-║                       └─────────────┬──────────────┘             ║
-╚═════════════════════════════════════╪══════════════════════════════╝
-                                      │
-                                      ▼
-              ┌───────────────────────────────┐
-              │  Supabase (PostgreSQL)         │
-              │  Attack logs, verdicts, ASR   │
-              └───────────────┬───────────────┘
-                              │
-                              ▼
-              ┌───────────────────────────────┐
-              │  Streamlit Dashboard           │
-              │  Real-time metrics, attack log │
-              └───────────────┬───────────────┘
-```
+<p align="center">
+  <img src="docs/assets/architecture.gif" alt="Animated diagram: attack prompts flow from the pipeline into the Aegis Sandbox through one OpenAI-compatible endpoint, through SessionGuard, Semantic Cache, and the four-layer guardrail stack, and the guarded response returns through that same endpoint." width="620">
+</p>
+
+Requests enter and guarded responses leave through the same address:
+`POST /v1/chat/completions`. Most prompts stop somewhere in the L1–L4
+guardrail stack; a minority reach the LLM and are checked again by
+OutputGuard before the response goes back. Logging to Supabase and the demo
+dashboard is optional and off the request path.
 
 ### Design Decisions
 
