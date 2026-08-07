@@ -118,7 +118,7 @@ The sandbox has known coverage gaps — the same gaps present in real production
 The pipeline is the primary system. The sandbox is what it attacks.
 
 <p align="center">
-  <img src="docs/assets/architecture.gif" alt="Animated diagram: attack prompts flow from the pipeline into the Aegis Sandbox through one OpenAI-compatible endpoint, through SessionGuard, Semantic Cache, and the four-layer guardrail stack, and the guarded response returns through that same endpoint." width="620">
+  <img src="docs/assets/architecture.png" alt="Structure diagram: attack prompts flow from the pipeline into the Aegis Sandbox through one OpenAI-compatible endpoint, through SessionGuard, Semantic Cache, and the four-layer guardrail stack, and the guarded response returns through that same endpoint." width="700">
 </p>
 
 Requests enter and guarded responses leave through the same address:
