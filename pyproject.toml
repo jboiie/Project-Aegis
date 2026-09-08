@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Autonomous LLM Security Proxy & Red-Teaming Pipeline"
 readme = "README.md"
 license = { text = "All Rights Reserved" }
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 authors = [
     { name = "Jai", email = "jai19kharb@gmail.com" },
 ]

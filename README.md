@@ -4,7 +4,7 @@
 
 ### Autonomous LLM Vulnerability Evaluation Pipeline
 
-[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688.svg)](https://fastapi.tiangolo.com)
 [![License: All Rights Reserved](https://img.shields.io/badge/License-All%20Rights%20Reserved-red.svg)](LICENSE)
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED.svg)](https://docs.docker.com/compose/)
@@ -183,7 +183,7 @@ Bypasses discovered in one campaign inform the next. The pipeline logs every suc
 | Strategy | Technique | Complexity | Status | Reference |
 |---|---|---|---|---|
 | **Template** | Known jailbreaks (DAN, AIM, role-play, hypothetical framing) | Low | ✅ Implemented | [JailbreakChat](https://jailbreakchat.com) |
-| **Encoding** | Base64, ROT13, leetspeak, word-split, Unicode homoglyph obfuscation | Low | ✅ Implemented | [Wei et al. 2023](https://arxiv.org/abs/2307.15043) |
+| **Encoding** | Base64, ROT13, leetspeak, word-split, Unicode homoglyph obfuscation | Low | ✅ Implemented | [Wei et al. 2023](https://arxiv.org/abs/2307.02483) |
 | **PAIR** | LLM-vs-LLM iterative refinement — attacker LLM rephrases until target breaks | Medium | ✅ Implemented | [Chao et al. 2023](https://arxiv.org/abs/2310.08419) |
 
 **Template attacks** inject known jailbreak templates (DAN, AIM, developer mode, etc.) into the sandbox. These test whether L1 regex rules are comprehensive and whether L2/L3 catch paraphrased variants.
@@ -411,6 +411,7 @@ python -m redteam.runner \
 | `--seed` | CLI flag | Fix seed for reproducibility across runs (default: 42) |
 | `--fail-above` | CLI flag | Exit code 1 if ASR exceeds this % — use as a CI/CD gate (e.g. `--fail-above 20`) |
 | `--report` | CLI flag | Path to write a structured Markdown report after the campaign finishes (e.g. `--report reports/campaign.md`) |
+| `--delay` | CLI flag | Seconds to wait between requests, for rate-limited targets (default: 2.0) |
 | `GROQ_API_KEY` | `.env` or shell | Required for PAIR's attacker LLM. [Get one free](https://console.groq.com/keys) |
 
 The runner sends OpenAI-format `POST` requests (`{"model": "...", "messages": [{"role": "user", "content": "<attack prompt>"}]}`) and expects a JSON response with a `choices[0].message.content` field. Any proxy that speaks OpenAI-compatible chat completions works without modification.
@@ -493,7 +494,7 @@ Turn the validated research stack into something a company can actually run.
 - [x] Fix Docker: `HF_HOME` model-cache persistence, `REDIS_HOST` compose-network bug, `.dockerignore`
 - [x] Verify Docker for real via CI (`.github/workflows/docker-verify.yml`) — no local Docker/WSL install required
 - [x] Add `DEPLOY.md`: drop-in proxy-container quick start, auth, config reference
-- [x] Add CI test job (`.github/workflows/tests.yml`) — 48 tests on every push/PR
+- [x] Add CI test job (`.github/workflows/tests.yml`) — 61 tests on every push/PR
 - [x] Implement the previously-planned Unicode homoglyph encoding attack
 
 ### Future Directions
