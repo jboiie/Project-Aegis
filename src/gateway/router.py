@@ -9,7 +9,9 @@ with zero code changes.
 import time
 
 from fastapi import APIRouter, Request
-from src.gateway.schemas import ChatRequest, ChatResponse
+from fastapi.responses import JSONResponse
+from src.config import settings
+from src.gateway.schemas import ChatRequest, ChatResponse, GuardrailCheck, SafetyVerdict
 from src.gateway.proxy import forward_to_llm
 
 router = APIRouter(tags=["gateway"])
@@ -37,7 +39,20 @@ async def chat_completions(request: ChatRequest, raw_request: Request):
     telemetry = raw_request.app.state.telemetry
 
     engine = raw_request.app.state.guardrail_engine
-    verdict = await engine.screen(prompt, session_id=session_id)
+
+    # Campaign-mode bypass: only active if CAMPAIGN_MODE_TOKEN is set AND
+    # the request carries a matching header - normal requests (the common
+    # case, and the startup probe's own direct regex.check() call) are
+    # completely unaffected. See src/config.py's CAMPAIGN_MODE_TOKEN
+    # comment and PROJECT_DESC.md's guardrails-off-ablation design.
+    skip_guardrails = (
+        bool(settings.CAMPAIGN_MODE_TOKEN)
+        and raw_request.headers.get("X-Campaign-Mode") == settings.CAMPAIGN_MODE_TOKEN
+    )
+    if skip_guardrails:
+        verdict = SafetyVerdict(passed=True, checks=[], blocked_reason="")
+    else:
+        verdict = await engine.screen(prompt, session_id=session_id)
     if not verdict.passed:
         await telemetry.log_event(
             prompt=prompt,
@@ -49,8 +64,39 @@ async def chat_completions(request: ChatRequest, raw_request: Request):
         )
         return ChatResponse.blocked(verdict)
 
-    llm_response = await forward_to_llm(request)
-    raw_content = llm_response["choices"][0]["message"]["content"]
+    try:
+        llm_response = await forward_to_llm(request)
+        raw_content = llm_response["choices"][0]["message"]["content"]
+    except Exception as exc:
+        # A request/API failure (dead model, timeout, target 500) is a
+        # separate outcome from blocked/allowed - previously this had no
+        # try/except at all here, so the exception crashed past this point
+        # unhandled: a raw 500 to the client, and telemetry.log_event()
+        # below never ran, meaning the failure left NO row in aegis_events,
+        # not even a misleading one. See PROJECT_DESC.md's error-handling
+        # audit, found via the aegis_events check for the llama-3.3-70b
+        # retirement's effect on historical campaigns.
+        #
+        # 502, not 200: template.py/encoding.py detect a request failure
+        # via response.raise_for_status(), which only fires on a non-2xx
+        # status. A 200 response with "[ERROR]" text in the body content
+        # would silently pass raise_for_status(), get parsed as a normal
+        # (refused) completion, and get counted as blocked - the same class
+        # of bug just fixed in pair.py, one layer up in the stack.
+        detail = f"{type(exc).__name__}: {exc}"
+        await telemetry.log_event(
+            prompt=prompt,
+            blocked=False,
+            blocked_reason=f"[ERROR] {detail}",
+            checks=[c.model_dump() for c in verdict.checks],
+            latency_ms=(time.perf_counter() - start_time) * 1000,
+            model=request.model,
+            errored=True,
+        )
+        return JSONResponse(
+            status_code=502,
+            content={"error": {"message": detail, "type": "target_llm_error"}},
+        )
 
     # Dual-pass output screening
     output_passed, final_content = engine.output_guard.screen_output(raw_content)
