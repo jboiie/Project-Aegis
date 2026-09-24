@@ -1,12 +1,12 @@
 """
 Groq LLM Provider — Primary target LLM backend.
 
-Uses Groq's OpenAI-compatible API for ultra-fast inference
-on Llama 3 models via their free tier.
-
-Groq free tier limits (as of 2026):
-  - 30 RPM, 14,400 RPD for llama-3.3-70b-versatile
-  - Sufficient for development and red-teaming experiments
+Uses Groq's OpenAI-compatible API for ultra-fast inference via their free
+tier. Rate limits are per-model and have shifted since this project
+started (llama-3.3-70b-versatile, the original target, is no longer even
+in Groq's model list - see PROJECT_DESC.md's model-config audit and
+src/config.py's GROQ_MODEL). Check current limits via /v1/models response
+headers rather than trusting a hardcoded number here.
 """
 
 import httpx
