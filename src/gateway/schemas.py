@@ -5,7 +5,9 @@ Designed to be OpenAI-compatible so any client library works
 out of the box by just changing the base URL.
 """
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+from src.config import settings
 
 
 class Message(BaseModel):
@@ -16,7 +18,10 @@ class Message(BaseModel):
 
 class ChatRequest(BaseModel):
     """Incoming chat completion request (OpenAI-compatible)."""
-    model: str = "llama-3.3-70b-versatile"
+    # default_factory, not a literal - llama-3.3-70b-versatile (the old
+    # default) is retired from Groq's catalog. See PROJECT_DESC.md's
+    # model-config audit.
+    model: str = Field(default_factory=lambda: settings.GROQ_MODEL)
     messages: list[Message]
     temperature: float = 0.7
     max_tokens: int = 1024
