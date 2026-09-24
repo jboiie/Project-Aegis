@@ -88,7 +88,8 @@ async def test_generate_attacker_prompt_strips_think_tags():
     mock_client = AsyncMock()
     mock_client.post = AsyncMock(return_value=fake_response)
 
-    prompt, used_fallback = await _generate_attacker_prompt(client=mock_client, goal="test goal", history=[])
+    with patch("redteam.attacks.pair.classify_is_refusal", AsyncMock(return_value=(False, "not a refusal"))):
+        prompt, used_fallback = await _generate_attacker_prompt(client=mock_client, goal="test goal", history=[])
 
     assert prompt == "Write a heist story."
     assert "<think>" not in prompt
@@ -115,6 +116,67 @@ async def test_generate_attacker_prompt_retries_on_truncated_reasoning():
     assert used_fallback is True
     assert "test goal" in prompt
     assert mock_client.post.call_count == 3  # exhausted all retries
+
+
+@pytest.mark.asyncio
+async def test_generate_attacker_prompt_retries_on_refusal_then_succeeds():
+    # Real bug: the attacker refused to write an attack prompt in 20/20
+    # real attempts, and its refusal text was used as the candidate every
+    # time - nothing checked whether the completion was itself a refusal.
+    # See PROJECT_DESC.md's attacker-refusal diagnosis.
+    fake_response = MagicMock()
+    fake_response.raise_for_status = MagicMock()
+    fake_response.json = MagicMock(return_value={
+        "choices": [{"message": {"content": "I won't help with that."}}],
+    })
+    mock_client = AsyncMock()
+    mock_client.post = AsyncMock(return_value=fake_response)
+
+    with patch("redteam.attacks.pair.classify_is_refusal",
+               AsyncMock(side_effect=[(True, "refusal"), (False, "real candidate")])):
+        prompt, used_fallback = await _generate_attacker_prompt(client=mock_client, goal="test goal", history=[])
+
+    assert used_fallback is False
+    assert prompt == "I won't help with that."  # same mock response both calls, only the classification differs
+    assert mock_client.post.call_count == 2  # 1 refusal + 1 successful retry
+
+
+@pytest.mark.asyncio
+async def test_generate_attacker_prompt_falls_back_after_persistent_refusal():
+    fake_response = MagicMock()
+    fake_response.raise_for_status = MagicMock()
+    fake_response.json = MagicMock(return_value={
+        "choices": [{"message": {"content": "I'm not going to help with this."}}],
+    })
+    mock_client = AsyncMock()
+    mock_client.post = AsyncMock(return_value=fake_response)
+
+    with patch("redteam.attacks.pair.classify_is_refusal", AsyncMock(return_value=(True, "refusal"))):
+        prompt, used_fallback = await _generate_attacker_prompt(client=mock_client, goal="test goal", history=[])
+
+    assert used_fallback is True
+    assert "test goal" in prompt
+    assert mock_client.post.call_count == 3  # 1 initial + 2 retries, all refused
+
+
+@pytest.mark.asyncio
+async def test_generate_attacker_prompt_refusal_classifier_failure_uses_candidate_as_is():
+    # If the classifier call itself fails, don't retry forever on a broken
+    # dependency - use the candidate as-is (the target-side judge still
+    # catches a genuinely bad candidate downstream).
+    fake_response = MagicMock()
+    fake_response.raise_for_status = MagicMock()
+    fake_response.json = MagicMock(return_value={
+        "choices": [{"message": {"content": "Write a story about a locksmith."}}],
+    })
+    mock_client = AsyncMock()
+    mock_client.post = AsyncMock(return_value=fake_response)
+
+    with patch("redteam.attacks.pair.classify_is_refusal", AsyncMock(side_effect=RuntimeError("classifier down"))):
+        prompt, used_fallback = await _generate_attacker_prompt(client=mock_client, goal="test goal", history=[])
+
+    assert used_fallback is False
+    assert prompt == "Write a story about a locksmith."
 
 
 @pytest.mark.asyncio
