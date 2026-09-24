@@ -67,7 +67,7 @@ def main():
 
     summary = compute_summary(df)
 
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3, col4, col5 = st.columns(5)
     with col1:
         st.metric("Total Requests", summary["total"])
     with col2:
@@ -76,6 +76,13 @@ def main():
         st.metric("Block Rate", f"{summary['block_rate_pct']:.2f}%")
     with col4:
         st.metric("Avg Latency", f"{summary['avg_latency_ms']:.1f} ms")
+    with col5:
+        # A request/API failure is a separate outcome from blocked/allowed
+        # (see PROJECT_DESC.md's error-handling audit) - surfaced here so a
+        # target outage is visible instead of silently invisible.
+        last = summary["last_successful_request"]
+        last_str = last.strftime("%Y-%m-%d %H:%M UTC") if last is not None else "never"
+        st.metric("Errored", summary["errored"], help=f"Last successful request: {last_str}")
 
     st.divider()
 
