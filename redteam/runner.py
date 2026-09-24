@@ -19,9 +19,10 @@ definitions, feedback loop design, and Phase A/B/C experiment roadmap.
 
 import asyncio
 import argparse
+import json
 import time
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 
 import httpx
@@ -111,17 +112,32 @@ async def run_attacks(
             try:
                 result = await attack.execute(target_url)
                 result.timestamp = datetime.now(timezone.utc).isoformat()
-                report.total_attacks += 1
                 report.results.append(result)
 
-                if result.bypassed:
-                    report.successful_bypasses += 1
+                # errored is a separate outcome from bypassed/blocked and
+                # excluded from ASR (total_attacks) - a request/API failure
+                # is not a verdict on the guardrail stack. See
+                # PROJECT_DESC.md's error-handling audit; previously a
+                # strategy could fold this into "blocked" internally
+                # (pair.py did, via an "[ERROR]" marker matching the same
+                # is_blocked check as a real block) with no error ever
+                # surfacing here.
+                if result.errored:
+                    report.errors += 1
                 else:
-                    report.blocked += 1
+                    report.total_attacks += 1
+                    if result.bypassed:
+                        report.successful_bypasses += 1
+                    else:
+                        report.blocked += 1
 
                 await asyncio.sleep(delay)  # avoid Groq rate limits
 
             except Exception as e:
+                # Last-resort catch for a genuine bug in the attack strategy
+                # itself (not a routine API/request failure - those are now
+                # caught inside each strategy and returned as errored=True
+                # above, with the prompt/response preserved for export).
                 report.errors += 1
                 logger.error("attack_error", strategy=name, attempt=i, error=str(e))
 
@@ -143,6 +159,11 @@ if __name__ == "__main__":
                              "Designed for CI/CD gate integration.")
     parser.add_argument("--report", default=None, metavar="PATH",
                         help="Write a Markdown campaign report to PATH after the run completes.")
+    parser.add_argument("--export-jsonl", default=None, metavar="PATH",
+                        help="Write every AttackResult (prompt, response, bypassed, strategy) to "
+                             "PATH as JSONL. bypassed is the correct independent ground truth for "
+                             "comparing input classifiers (Laya vs L2) against - not "
+                             "guardrail_checks.passed, which is a check's own verdict on itself.")
     args = parser.parse_args()
 
     attack_list = [a.strip() for a in args.attacks.split(",")]
@@ -167,6 +188,12 @@ if __name__ == "__main__":
         )
         generate(meta, report.results, args.report)
         print(f"Report written to {args.report}")
+
+    if args.export_jsonl:
+        with open(args.export_jsonl, "w", encoding="utf-8") as f:
+            for r in report.results:
+                f.write(json.dumps(asdict(r)) + "\n")
+        print(f"Exported {len(report.results)} AttackResult rows to {args.export_jsonl}")
 
     if args.fail_above is not None:
         asr_pct = report.attack_success_rate * 100
