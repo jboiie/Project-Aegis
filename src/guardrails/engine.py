@@ -127,7 +127,12 @@ class GuardrailEngine:
             )
 
         # ── Layer 0: Semantic cache — near-duplicate of a known-blocked prompt (< 5ms) ──
-        if self.semantic_cache is not None:
+        # SEMANTIC_CACHE_ENABLED=False for campaign runs - the cache serves
+        # near-duplicate matches from prior blocks instead of a fresh
+        # per-prompt verdict, contaminating a red-team run's measured ASR
+        # against a repeated/similar attack corpus. Directly observed. See
+        # PROJECT_DESC.md's per-layer-attribution diagnosis.
+        if settings.SEMANTIC_CACHE_ENABLED and self.semantic_cache is not None:
             is_threat, similarity = await self.semantic_cache.check(text)
             if is_threat:
                 cache_check = GuardrailCheck(
@@ -153,7 +158,7 @@ class GuardrailEngine:
             if not regex_result.passed:
                 if session_id:
                     self.session_guard.record_rejection(session_id)
-                if self.semantic_cache is not None:
+                if settings.SEMANTIC_CACHE_ENABLED and self.semantic_cache is not None:
                     await self.semantic_cache.add_malicious(text, reason=regex_result.detail)
                 return SafetyVerdict(
                     passed=False,
@@ -168,7 +173,7 @@ class GuardrailEngine:
             if not injection_result.passed:
                 if session_id:
                     self.session_guard.record_rejection(session_id)
-                if self.semantic_cache is not None:
+                if settings.SEMANTIC_CACHE_ENABLED and self.semantic_cache is not None:
                     await self.semantic_cache.add_malicious(text, reason=injection_result.detail)
                 return SafetyVerdict(
                     passed=False,
@@ -183,7 +188,7 @@ class GuardrailEngine:
             if not toxicity_result.passed:
                 if session_id:
                     self.session_guard.record_rejection(session_id)
-                if self.semantic_cache is not None:
+                if settings.SEMANTIC_CACHE_ENABLED and self.semantic_cache is not None:
                     await self.semantic_cache.add_malicious(text, reason=toxicity_result.detail)
                 return SafetyVerdict(
                     passed=False,
