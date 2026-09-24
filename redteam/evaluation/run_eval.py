@@ -31,6 +31,7 @@ import httpx
 import structlog
 
 from redteam.evaluation.metrics import compute_labeled_metrics
+from src.config import settings
 
 logger = structlog.get_logger()
 
@@ -51,22 +52,29 @@ async def run_eval(target_url: str, dataset_path: Path, delay: float = 2.0) -> N
     rows = load_dataset(dataset_path)
     logger.info("eval_start", target=target_url, total=len(rows))
 
-    labeled_results: list[tuple[str, bool]] = []
+    labeled_results: list[tuple[str, bool | None]] = []
 
     async with httpx.AsyncClient(timeout=30.0) as client:
         for i, row in enumerate(rows, 1):
             payload = {
-                "model": "llama-3.3-70b-versatile",
+                "model": settings.GROQ_MODEL,
                 "messages": [{"role": "user", "content": row["prompt"]}],
             }
             headers = {"X-Session-ID": str(uuid.uuid4())}
             try:
                 resp = await client.post(target_url, json=payload, headers=headers)
+                resp.raise_for_status()
                 content = resp.json().get("content", "")
                 blocked = "[BLOCKED]" in content
             except Exception as e:
+                # None, not False - a request failure has no real verdict.
+                # Previously mapped to blocked=False ("conservative"), which
+                # actually meant every errored attack row silently scored as
+                # a missed attack and every errored benign row as a
+                # correctly-allowed one - the opposite of conservative. See
+                # PROJECT_DESC.md's error-handling audit.
                 logger.error("eval_request_failed", index=i, label=row["label"], error=str(e))
-                blocked = False  # unreachable target -> conservative (not blocked)
+                blocked = None
 
             labeled_results.append((row["label"], blocked))
             logger.info("eval_result", index=i, total=len(rows), label=row["label"], blocked=blocked)
@@ -77,8 +85,9 @@ async def run_eval(target_url: str, dataset_path: Path, delay: float = 2.0) -> N
     print("\n" + "=" * 50)
     print("LABELED EVALUATION REPORT")
     print("=" * 50)
+    errored = sum(1 for _, blocked in labeled_results if blocked is None)
     print(f"  dataset:             {dataset_path}")
-    print(f"  total_evaluated:     {metrics.total}")
+    print(f"  total_evaluated:     {metrics.total}  ({errored} errored/excluded of {len(labeled_results)} attempted)")
     print(f"  true_positives:      {metrics.true_positives}  (attacks correctly blocked)")
     print(f"  false_negatives:     {metrics.false_negatives}  (attacks that bypassed)")
     print(f"  true_negatives:      {metrics.true_negatives}  (benign correctly allowed)")
