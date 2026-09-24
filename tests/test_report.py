@@ -8,7 +8,7 @@ from redteam.attacks.base import AttackResult
 from redteam.report import BYPASS_CAP, CampaignMeta, generate
 
 
-def _result(strategy, bypassed, response="[BLOCKED] L1 Regex match", **metadata):
+def _result(strategy, bypassed, response="[BLOCKED] L1 Regex match", errored=False, **metadata):
     return AttackResult(
         strategy=strategy,
         prompt=f"prompt for {strategy}",
@@ -17,6 +17,7 @@ def _result(strategy, bypassed, response="[BLOCKED] L1 Regex match", **metadata)
         confidence=0.9,
         metadata=metadata,
         timestamp="2026-08-01T00:00:00+00:00",
+        errored=errored,
     )
 
 
@@ -151,6 +152,42 @@ def test_executive_summary_pass_fail_wording(tmp_path):
 
     assert "FAILED the configured threshold of 20.0%" in md_fail
     assert "PASSED the configured threshold of 20.0%" in md_pass
+
+
+def test_errored_excluded_from_asr_and_blocked_counts(tmp_path):
+    # errored rows are a separate outcome, previously double-counted as
+    # "blocked" everywhere `not r.bypassed` was used as the blocked check
+    # (executive summary, per-strategy table, blocked-attacks summary).
+    # See PROJECT_DESC.md's error-handling audit.
+    results = [
+        _result("template", True, response="ok"),  # 1 real bypass
+        _result("template", False, response="[BLOCKED] L1 Regex match"),  # 1 real block
+        _result("template", False, response="[ERROR] ConnectError", errored=True),
+        _result("encoding", False, response="[ERROR] ConnectError", errored=True),
+    ]
+    md = generate(_meta(), results, str(tmp_path / "r.md"))
+
+    # Total attempts line still counts all 4 raw rows...
+    assert "Total Attempts:** 4" in md
+    # ...but the executive summary's scored ASR excludes the 2 errored rows:
+    # 1 bypass out of 2 scored attempts = 50%, not 1/4 = 25%.
+    assert "1 of 2 scored" in md
+    assert "50.00%)" in md
+    assert "2 attempts errored" in md
+    # Results-by-strategy table: template row should show 1 bypass, 1
+    # blocked, 1 error - not 2 blocked (which is what `not bypassed` would
+    # have given before the fix).
+    assert "| Template | 2 | 1 | 1 | 1 | 50.00% |" in md
+
+
+def test_blocked_summary_excludes_errored(tmp_path):
+    results = [
+        _result("template", False, response="[BLOCKED] L1 Regex match"),
+        _result("encoding", False, response="[ERROR] ConnectError", errored=True),
+    ]
+    md = generate(_meta(), results, str(tmp_path / "r.md"))
+    assert "L1 Regex match" in md
+    assert "ConnectError" not in md.split("## Blocked Attacks Summary")[1].split("##")[0]
 
 
 def test_blocked_summary_reason_breakdown(tmp_path):
