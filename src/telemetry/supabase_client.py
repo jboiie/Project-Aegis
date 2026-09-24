@@ -13,6 +13,8 @@ Table schema (create via scripts/setup_supabase.sql):
   - guardrail_checks (jsonb) — array of check results
   - latency_ms (float)
   - model (text) — target LLM model name
+  - errored (boolean) — a request/API failure, a separate outcome from
+    blocked/allowed. See PROJECT_DESC.md's error-handling audit.
 """
 
 from datetime import datetime, timezone
@@ -55,6 +57,7 @@ class TelemetryClient:
         checks: list[dict],
         latency_ms: float,
         model: str,
+        errored: bool = False,
     ):
         """
         Log a proxy event to Supabase.
@@ -62,10 +65,14 @@ class TelemetryClient:
         Args:
             prompt: Raw prompt text (hashed for privacy).
             blocked: Whether the request was blocked.
-            blocked_reason: Human-readable block reason.
+            blocked_reason: Human-readable block reason (or error detail
+                when errored=True).
             checks: List of guardrail check results.
             latency_ms: Total processing latency.
             model: Target LLM model name.
+            errored: True if a request/API failure prevented a real
+                blocked/allowed verdict - a separate outcome, not
+                overloaded onto `blocked`.
         """
         event = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -75,10 +82,23 @@ class TelemetryClient:
             "guardrail_checks": json.dumps(checks),
             "latency_ms": latency_ms,
             "model": model,
+            "errored": errored,
         }
 
         if self._client:
-            self._client.table(self.table).insert(event).execute()
+            try:
+                self._client.table(self.table).insert(event).execute()
+            except Exception as exc:
+                # Fail-open: telemetry is observability, not a request-path
+                # dependency. Previously an insert failure (e.g. a missing
+                # column - exactly what happens right now, since `errored`
+                # exists in this code but not yet on the live table, see
+                # PROJECT_DESC.md's schema-confirmation note) would raise
+                # straight through router.py's `await telemetry.log_event()`
+                # call and break the actual request/response the client is
+                # waiting on. A logging failure must never change what the
+                # caller gets back.
+                logger.warning("telemetry_insert_failed", error=str(exc), table=self.table)
         else:
             # Dev mode — just log locally
             logger.info("telemetry_event", **event)
