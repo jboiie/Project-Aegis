@@ -35,14 +35,32 @@ def events_to_df(rows: list[dict]) -> pd.DataFrame:
 
 def compute_summary(df: pd.DataFrame) -> dict:
     if df.empty:
-        return {"total": 0, "blocked": 0, "block_rate_pct": 0.0, "avg_latency_ms": 0.0}
+        return {
+            "total": 0, "blocked": 0, "block_rate_pct": 0.0, "avg_latency_ms": 0.0,
+            "errored": 0, "last_successful_request": None,
+        }
     total = len(df)
     blocked = int(df["blocked"].sum())
+    # "errored" may not exist on rows logged before this column was added
+    # (see scripts/setup_supabase.sql's idempotent ADD COLUMN) - treat
+    # missing as not-errored rather than raising.
+    errored_col = df["errored"] if "errored" in df.columns else pd.Series(False, index=df.index)
+    errored = int(errored_col.fillna(False).sum())
+
+    # A "successful" request actually reached the target LLM and got a real
+    # answer back - not blocked, not errored. Distinct from "most recent
+    # event", which could be a block or an error. See PROJECT_DESC.md's
+    # error-handling audit.
+    successful = df[(df["blocked"] == False) & (~errored_col.fillna(False))]  # noqa: E712
+    last_successful = successful["timestamp"].max() if not successful.empty else None
+
     return {
         "total": total,
         "blocked": blocked,
         "block_rate_pct": 100.0 * blocked / total,
         "avg_latency_ms": float(df["latency_ms"].mean()),
+        "errored": errored,
+        "last_successful_request": last_successful,
     }
 
 
