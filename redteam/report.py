@@ -56,10 +56,16 @@ def generate(meta: CampaignMeta, results: list[AttackResult], output_path: str) 
 # ── Shared stats helpers ─────────────────────────────────────
 
 def _strategy_stats(attacks: list[str], results: list[AttackResult]) -> dict[str, dict]:
-    """Attempts/bypasses/blocked/ASR per strategy, in the order attacks were given."""
-    stats = {name: {"attempts": 0, "bypasses": 0, "blocked": 0} for name in attacks}
+    """Attempts/bypasses/blocked/errors/ASR per strategy, in the order attacks
+    were given. errored rows are a separate outcome, excluded from attempts
+    and ASR - previously folded into "blocked" here (a request/API failure
+    is not a guardrail verdict). See PROJECT_DESC.md's error-handling audit."""
+    stats = {name: {"attempts": 0, "bypasses": 0, "blocked": 0, "errors": 0} for name in attacks}
     for r in results:
-        row = stats.setdefault(r.strategy, {"attempts": 0, "bypasses": 0, "blocked": 0})
+        row = stats.setdefault(r.strategy, {"attempts": 0, "bypasses": 0, "blocked": 0, "errors": 0})
+        if r.errored:
+            row["errors"] += 1
+            continue
         row["attempts"] += 1
         if r.bypassed:
             row["bypasses"] += 1
@@ -93,8 +99,10 @@ def _render_header(meta: CampaignMeta, results: list[AttackResult]) -> str:
 
 
 def _render_executive_summary(meta: CampaignMeta, results: list[AttackResult]) -> str:
-    total = len(results)
-    bypasses = sum(1 for r in results if r.bypassed)
+    errored = sum(1 for r in results if r.errored)
+    scored = [r for r in results if not r.errored]
+    total = len(scored)
+    bypasses = sum(1 for r in scored if r.bypassed)
     blocked = total - bypasses
     asr = (bypasses / total * 100) if total else 0.0
 
@@ -105,26 +113,30 @@ def _render_executive_summary(meta: CampaignMeta, results: list[AttackResult]) -
         else:
             verdict = f" The campaign PASSED the configured threshold of {meta.fail_above}%."
 
+    errored_note = f" {errored} attempts errored (request/API failure, excluded from ASR)." if errored else ""
     summary = (
-        f"This report covers a red-team campaign of {total} attack attempts across "
-        f"{', '.join(meta.attacks)} strategies against {meta.target}. {bypasses} attempts "
-        f"({asr:.2f}%) bypassed the guardrail stack. {blocked} attempts were blocked.{verdict}"
+        f"This report covers a red-team campaign of {len(results)} attack attempts across "
+        f"{', '.join(meta.attacks)} strategies against {meta.target}. {bypasses} of {total} scored "
+        f"attempts ({asr:.2f}%) bypassed the guardrail stack. {blocked} attempts were blocked."
+        f"{errored_note}{verdict}"
     )
     return "## Executive Summary\n\n" + summary
 
 
 def _render_results_by_strategy(meta: CampaignMeta, results: list[AttackResult]) -> str:
     stats = _strategy_stats(meta.attacks, results)
-    rows = ["| Strategy | Attempts | Bypasses | Blocked | ASR |", "|---|---|---|---|---|"]
+    rows = ["| Strategy | Attempts | Bypasses | Blocked | Errors | ASR |", "|---|---|---|---|---|---|"]
     for name in meta.attacks:
-        s = stats.get(name, {"attempts": 0, "bypasses": 0, "blocked": 0, "asr": 0.0})
-        rows.append(f"| {name.title()} | {s['attempts']} | {s['bypasses']} | {s['blocked']} | {s['asr']:.2f}% |")
+        s = stats.get(name, {"attempts": 0, "bypasses": 0, "blocked": 0, "errors": 0, "asr": 0.0})
+        rows.append(f"| {name.title()} | {s['attempts']} | {s['bypasses']} | {s['blocked']} | {s['errors']} | {s['asr']:.2f}% |")
 
-    total_attempts = len(results)
-    total_bypasses = sum(1 for r in results if r.bypassed)
+    scored = [r for r in results if not r.errored]
+    total_attempts = len(scored)
+    total_bypasses = sum(1 for r in scored if r.bypassed)
     total_blocked = total_attempts - total_bypasses
+    total_errors = sum(1 for r in results if r.errored)
     total_asr = (total_bypasses / total_attempts * 100) if total_attempts else 0.0
-    rows.append(f"| **Total** | {total_attempts} | {total_bypasses} | {total_blocked} | {total_asr:.2f}% |")
+    rows.append(f"| **Total** | {total_attempts} | {total_bypasses} | {total_blocked} | {total_errors} | {total_asr:.2f}% |")
 
     return "## Results by Strategy\n\n" + "\n".join(rows)
 
@@ -159,7 +171,7 @@ def _render_bypassed_prompts(meta: CampaignMeta, results: list[AttackResult]) ->
 
 
 def _render_blocked_summary(results: list[AttackResult]) -> str:
-    blocked = [r for r in results if not r.bypassed]
+    blocked = [r for r in results if not r.bypassed and not r.errored]
     lines = ["## Blocked Attacks Summary", ""]
     if not blocked:
         lines.append("No blocked attempts recorded.")
