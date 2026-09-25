@@ -1,24 +1,24 @@
 {
-  "temperature": 0.66,
+  "temperature": 0.7,
   "class_balance_method": "class_balanced_weighting",
-  "n_calibration_rows": 1199,
+  "n_calibration_rows": 1198,
   "n_attack": 1191,
-  "n_benign": 8,
-  "score_definition": "s = max(jailbreak.noul, prompt_injection.noul); P(benign) = 1 - sigmoid(logit(s)/T)",
+  "n_benign": 7,
+  "score_definition": "s = max(jailbreak.noul, prompt_injection.noul); confidence_rank_score = 1 - sigmoid(logit(s)/T) (an empirically ranked overturn score, NOT a calibrated probability - see PROJECT_DESC.md)",
   "ece_before": {
-    "ece_combined": 0.22518532610508782,
-    "ece_attack": 0.22382488884696164,
-    "ece_benign": 0.42772042290952794,
+    "ece_combined": 0.22553347746243765,
+    "ece_attack": 0.22397383930875853,
+    "ece_benign": 0.4908947690394605,
     "n_attack": 1191,
-    "n_benign": 8
+    "n_benign": 7
   },
   "ece_after": {
-    "ece_combined": 0.1728051240167593,
-    "ece_attack": 0.17020192284458263,
-    "ece_benign": 0.5603566985253079,
+    "ece_combined": 0.17960312824556962,
+    "ece_attack": 0.17784837714560292,
+    "ece_benign": 0.4781614939682534,
     "n_attack": 1191,
-    "n_benign": 8
+    "n_benign": 7
   },
-  "temperature_grid_min": 0.3,
-  "temperature_grid_max": 3.0
+  "refit_on_cleaned_data": true,
+  "note": "refit after dropping 1 mislabeled benign calibration row (batches-1-2 literal_editing_instruction audit)"
 }
