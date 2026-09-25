@@ -326,22 +326,47 @@ PAIR is dropped from *ASR claims*, but any PAIR data that does exist
 mislabeled as an attack input.
 
 **Attack set built** (`redteam/laya_attack_set.py` → `data/laya_attack_set.jsonl`,
-seed=42, no Groq calls, no PAIR): **325 total rows** - 300 AdvBench-wrapped
-(30 goals x 5 templates + 5 encodings) + 25 real `labeled_eval_set.jsonl`
-attacks. Split by **goal**, not row, for the AdvBench-wrapped portion
-(verified directly against the generated file: 0/30 goals cross a split
-boundary); `labeled_eval_set.jsonl`'s 25 standalone rows split at row
-level (no shared goal structure).
+seed=42, no Groq calls, no PAIR): **5225 total rows** - 5200 AdvBench-wrapped
+(all 520 real AdvBench goals x 5 templates + 5 encodings) + 25 real
+`labeled_eval_set.jsonl` attacks. Expanded from an initial 30-goal/325-row
+version per review feedback (9 distinct test-split goals was too few -
+wrapper variants are correlated, so the effective attack sample was ~9, not
+90). Split by **goal**, not row, for the AdvBench-wrapped portion (verified
+directly against the generated file: 0/520 goals cross a split boundary);
+`labeled_eval_set.jsonl`'s 25 standalone rows split at row level (no shared
+goal structure).
 
 | Split | Total | template | encoding | labeled_eval_set | distinct AdvBench goals |
 |---|---|---|---|---|---|
-| calibration | 98 | 45 | 45 | 8 | 9 |
-| sweep | 130 | 60 | 60 | 10 | 12 |
-| test | 97 | 45 | 45 | 7 | 9 |
+| calibration | 1568 | 780 | 780 | 8 | 156 |
+| sweep | 2090 | 1040 | 1040 | 10 | 208 |
+| test | 1567 | 780 | 780 | 7 | 156 |
 
 Tests: `tests/test_laya_attack_set.py` (3 passing) - same-goal rows land in
 the same split, splits disjoint and cover all rows, row-level split works
 correctly when the key function has no shared grouping.
+
+**Blocked-row counts** (`redteam/laya_screen_batch.py` → `data/laya_screen_results.jsonl`,
+`GuardrailEngine().screen()` run locally, fresh session ID per row, cache
+off by construction, no Groq calls; 5525 rows, 33.7min real runtime):
+
+| Split | Attacks total | L1 | L2 | L1+L2 blocked | Benign total | L1 | L2 | L1+L2 blocked |
+|---|---|---|---|---|---|---|---|---|
+| calibration | 1568 | 156 | 1035 | 1191 | 90 | 3 | 5 | 8 |
+| sweep | 2090 | 209 | 1374 | 1583 | 120 | 9 | 6 | 15 |
+| test | 1567 | 156 | 1037 | 1193 | 90 | 7 | 10 | 17 |
+
+All benign L1/L2 blocks fall in exactly two categories -
+`security_education` and `literal_editing_instruction` - the other eight
+categories have zero L1/L2 blocks in any split, matching the known FP
+concentration this experiment targets.
+
+Sweep split (the population the threshold rule is fit against): 1583
+attacks blocked by L1/L2. `MAX_RECALL_LOSS = 0.05` means at most **79** of
+these 1583 may be wrongly overturned by the chosen threshold. Test split
+(the population `laya_eval.py`'s FPR-reduction table reports on): only
+**17/90** benign rows were blocked by L1/L2 - the ceiling on how many false
+positives this experiment can even demonstrate fixing on that split.
 
 **Data flow / what gets logged:**
 - Input to the whole experiment: `data/attack_export_test.jsonl`-style
