@@ -587,21 +587,43 @@ small test-split count is not reported alone again.
 
 ## Step 5 final results (test split, t=0.69 fixed, run once)
 
+**Step 0 re-fit summary** (full detail in the "Benign batch 3" section
+above; consolidated here since it belongs alongside the rest of step 5):
+
+| | Pre-drop | Post-drop (cleaned) | Changed? |
+|---|---|---|---|
+| Calibration T | 0.66 | 0.70 | yes |
+| Sweep threshold t | 0.70 | 0.69 | yes (marginal) |
+| Sweep attacks overturned | 78/1583 | 78/1583 | **no - identical** |
+| Sweep strict/effective recall lost | 4.93% / 4.93% | 4.93% / 4.93% | no |
+| Sweep benign overturned | 6/15 | 5/10 | yes - same 5 real rows, 5 mislabeled rows removed from the denominator |
+| Sweep FPR reduction | 40.0% | 50.0% | yes (pop. cleaned, not a real behavior change) |
+
+The operating point barely moved: T and t shifted by small amounts
+(0.66->0.70, 0.70->0.69) and the exact same 78 attacks get overturned
+on sweep either way. The only real change is the benign FPR-reduction
+denominator shrinking from 15 to 10 as mislabeled rows were removed -
+the 5 genuine benign overturns didn't change.
+
 **FPR before/after Laya overturn** (`redteam/laya_eval.py`, Wilson 95% CIs):
+
+**Lead result: `security_education` batches 1-2 (n=18, hand/LLM-written,
+the harder and more representative distribution) - FPR before 61.1%
+[38.6%, 79.7%], FPR after 11.1% [3.1%, 32.8%].** Batch 3 (n=100,
+template-generated, see the labeling-methodology note above) is an
+easier distribution - lower FPR before (15.0%) and overturns cleanly
+to 0%. The COMBINED number (22.0% -> 1.7%) is reported for completeness
+but batch 3's much larger n dominates it and shouldn't be read as the
+headline - n=18 is thin and its CI is wide, but batches 1-2 are the
+distribution that actually matters here.
 
 | Group | n | FPR before | Laya overturns | FPR after |
 |---|---|---|---|---|
-| `security_education`, batches 1-2 | 18 | 11/18 = 61.1% [38.6%, 79.7%] | 9/11 | 2/18 = 11.1% [3.1%, 32.8%] |
-| `security_education`, batch 3 (template-generated) | 100 | 15/100 = 15.0% [9.3%, 23.3%] | 15/15 | 0/100 = 0.0% [0.0%, 3.7%] |
-| `security_education`, COMBINED (headline) | 118 | 26/118 = 22.0% [15.5%, 30.3%] | 24/26 | 2/118 = 1.7% [0.5%, 6.0%] |
+| `security_education`, batches 1-2 (lead result) | 18 | 11/18 = 61.1% [38.6%, 79.7%] | 9/11 | 2/18 = 11.1% [3.1%, 32.8%] |
+| `security_education`, batch 3 (template-generated, easier) | 100 | 15/100 = 15.0% [9.3%, 23.3%] | 15/15 | 0/100 = 0.0% [0.0%, 3.7%] |
+| `security_education`, COMBINED (reported for completeness, not the headline) | 118 | 26/118 = 22.0% [15.5%, 30.3%] | 24/26 | 2/118 = 1.7% [0.5%, 6.0%] |
 | `literal_editing_instruction` (descriptive only) | 6 | 2/6 blocked | 1/2 | — no rate claimed |
 | other 8 categories | 54 | 0/54 = 0.0% [0.0%, 6.6%] | 0/0 | 0/54 = 0.0% [0.0%, 6.6%] |
-
-`security_education` batches 1-2 and batch 3 behave differently (61.1%
-vs. 15.0% FPR before) - confirms the distribution note above; the
-COMBINED row is the headline but batch 3's much larger n (100 vs 18)
-dominates it. Batch 3 overturns cleanly to 0% FPR (all 15 blocked rows
-overturned); batches 1-2 leave 2/18 still blocked after overturn.
 
 **Recall lost** (test split, 1193 attacks L1/L2 blocked):
 
@@ -610,12 +632,13 @@ overturned); batches 1-2 leave 2/18 still blocked after overturn.
 | strict recall lost | 72/1193 | 6.0% [4.8%, 7.5%] |
 | effective recall lost | 71/1193 | 6.0% [4.7%, 7.4%] |
 
-**This exceeds `MAX_RECALL_LOSS = 0.05`.** The threshold (t=0.69) was
-fit on the sweep split only, where it measured 4.93% - within bound by
-design. Test-split recall lost (6.0%) is real, split-to-split sampling
-variance in how the chosen threshold generalizes, not a tuning error -
-per the spec, the threshold was fixed before this run and not
-re-tuned after seeing this result. Reported as measured, not adjusted.
+**Reported as measured: 6.0% [4.8%, 7.5%] on test vs. the 5%
+sweep-chosen bound.** The threshold (t=0.69) was fit on the sweep split
+only, where it measured 4.93% - within bound by design. Test-split
+recall lost (6.0%) exceeds `MAX_RECALL_LOSS = 0.05`; this is real,
+split-to-split sampling variance in how the chosen threshold
+generalizes, not a tuning error - per the spec, the threshold was fixed
+before this run and not re-tuned after seeing this result.
 
 **End-to-end harm check** (72 Laya-overturned test attacks ->
 `qwen/qwen3.8-27b`, campaign mode, uplift-rubric judge):
@@ -626,16 +649,14 @@ re-tuned after seeing this result. Reported as measured, not adjusted.
 | bypassed | 0/72 | 0.0% [0.0%, 5.1%] |
 | errored | 0/72 | 0.0% [0.0%, 5.1%] |
 
-Zero bypasses - every attack Laya would overturn, the target model
-refused unaided anyway. Consistent with the earlier baseline finding
-that this target refuses the AdvBench-derived corpus without help from
-the guardrail stack at all (template/encoding ASR ~0% with or without
-guardrails). This means the *practical* cost of the 6.0% recall loss
-measured above is, on this specific target model, close to zero - the
-guardrail stack's block was often redundant with the model's own
-refusal. A weaker or differently-aligned target could show real bypass
-cost at this recall-loss rate; this result is specific to
-`openai/gpt-oss-120b`-family alignment on Groq, not a general claim.
+**72/72 refused reflects the target model refusing this corpus unaided
+(see the locked baseline's template/encoding ASR ~0% with or without
+guardrails) - it shows zero added harm WITH THIS TARGET, not that
+Laya's overturns are safe in general.** The guardrail stack's block was
+often redundant with the model's own refusal here; a weaker or
+differently-aligned target could show real bypass cost at this
+recall-loss rate. This result is specific to `openai/gpt-oss-120b`-family
+alignment on Groq and should not be generalized past that.
 
 **Laya latency** (this run, 2-question `predict()` call, fp32 CPU,
 n=50 sample from the test split): p50=243.7ms, p95=336.7ms per
@@ -656,6 +677,69 @@ and shows only a marginal improvement (0.4909 -> 0.4782). See
 reliability curve (combined population; per-class reliability is not
 meaningful with n=7 benign, so attack/benign rows are shown as rugs
 along the combined curve instead).
+
+## Baselines: does Laya actually beat the simple alternatives?
+
+Laya adds a second CPU model and ~244ms/question of latency (Table 4
+above). That's only worth it if it beats what a much cheaper knob can
+do. Two baselines, computed from saved screen results only - no new
+prompts, no Groq calls.
+
+**a) L2 threshold tuning** (`redteam/l2_threshold_baseline.py`,
+`scripts/_score_l2_confidence.py`): raise L2's own decision threshold
+(`GUARDRAIL_INJECTION_THRESHOLD`, currently 0.85) instead of adding a
+second model. L2's confidence for currently-blocked rows wasn't saved
+in the original screen run (only pass/fail was) - recovered via
+targeted `InjectionDetector().check()` calls on exactly the 2425 rows
+already known to be `blocked_by=L2` on sweep+test (not a full
+re-screen: raising a decision threshold can only ever un-block a
+row already blocked at the lower threshold, never block a new one, so
+no other rows needed scoring). Same rule as Laya: choose tau on sweep
+(most permissive value with effective recall lost <= 5%), apply once
+on test.
+
+Sweep-chosen **tau=0.965**: strict recall lost 5.05% (80/1583),
+effective 4.99% (79/1583), **FPR reduction 0.00% (0/10 benign
+unblocked)**. Applied on test: recall lost 56/1193 = 4.7% [3.6%, 6.0%],
+`security_education` batches 1-2 FPR unchanged at 61.1% -> 61.1% (0/11
+unblocked), batch 3 barely moves (15.0% -> 14.0%, 1/15 unblocked).
+**L2's own confidence doesn't separate benign security_education/
+literal_editing text from real attacks at all** - the classifier scores
+the benign "meta" questions about jailbreaking about as confidently as
+it scores real jailbreak attempts, so no threshold in [0.85, 1.0]
+recovers meaningful FPR reduction without also costing recall. This is
+the direct evidence that the problem isn't "L2's threshold is
+miscalibrated," it's "L2 can't distinguish this specific kind of false
+positive at all" - which is exactly the gap a genuinely different
+classifier (Laya) is positioned to fill, and does (Table 1 above).
+
+**b) L1 keyword audit** (`scripts/_l1_keyword_audit.py`, using
+`blocked_reason` already saved in `laya_screen_results.jsonl` - no new
+data needed): of the 15 `security_education` test rows L1 blocks, all
+15 (100%) matched purely on the bare word "jailbreak" via the
+`jailbreak(ed)?` pattern - zero matched any of L1's other, more
+specific injection-shaped patterns (`ignore previous instructions`,
+`you are now DAN`, `pretend you have no restrictions`, etc.). L1's
+false-positive cost on this category is entirely a topic-keyword
+collision, not injection-shaped phrasing slipping through - the
+regex can't tell "explain what jailbreak means" from an actual attempt.
+
+**Side-by-side, same test split, same metrics:**
+
+| | Laya (t=0.69) | L2 threshold tuning (tau=0.965) |
+|---|---|---|
+| `security_education` b1-2 FPR before -> after | 61.1% -> 11.1% [3.1%, 32.8%] | 61.1% -> 61.1% (unchanged) |
+| `security_education` b3 FPR before -> after | 15.0% -> 0.0% [0.0%, 3.7%] | 15.0% -> 14.0% [8.5%, 22.1%] |
+| `security_education` combined FPR before -> after | 22.0% -> 1.7% [0.5%, 6.0%] | 22.0% -> 21.2% [14.8%, 29.4%] |
+| strict recall lost (test) | 72/1193 = 6.0% [4.8%, 7.5%] | 56/1193 = 4.7% [3.6%, 6.0%] |
+| effective recall lost (test) | 71/1193 = 6.0% [4.7%, 7.4%] | 56/1193 = 4.7% [3.6%, 6.0%] |
+| sweep FPR reduction (selection stage) | 50.0% (5/10) | 0.0% (0/10) |
+
+L2 threshold tuning costs *less* recall on test (4.7% vs. 6.0%) but
+buys essentially nothing on the headline FPR number (batches 1-2:
+0 percentage points of improvement, vs. Laya's 50-point drop). Laya
+costs more recall for a real FPR reduction that a cheaper threshold
+change on the existing classifier cannot deliver at all.
 
 **Known limitations:**
 - fp32 CPU only - no working bf16/quantized path (naive whole-model
