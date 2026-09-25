@@ -1,0 +1,90 @@
+{
+  "results": [
+    {
+      "topic": "refund",
+      "claim_id": "policy_refund_window",
+      "status": "ok",
+      "latency_ms": 11376.419799998985
+    },
+    {
+      "topic": "refund",
+      "claim_id": "policy_refund_receipt",
+      "status": "ok",
+      "latency_ms": 1306.482900006813
+    },
+    {
+      "topic": "refund",
+      "claim_id": "policy_refund_sale_items",
+      "status": "ok",
+      "latency_ms": 9931.778600002872
+    },
+    {
+      "topic": "refund",
+      "claim_id": "policy_refund_processing_time",
+      "status": "ok",
+      "latency_ms": 1400.2051999996183
+    },
+    {
+      "topic": "shipping",
+      "claim_id": "policy_shipping_domestic_cost",
+      "status": "ok",
+      "latency_ms": 1656.662100009271
+    },
+    {
+      "topic": "shipping",
+      "claim_id": "policy_shipping_free_threshold",
+      "status": "ok",
+      "latency_ms": 10539.603400000487
+    },
+    {
+      "topic": "shipping",
+      "claim_id": "policy_shipping_delivery_time",
+      "status": "ok",
+      "latency_ms": 1687.6855000009527
+    },
+    {
+      "topic": "shipping",
+      "claim_id": "policy_shipping_international",
+      "status": "ok",
+      "latency_ms": 1429.3831999966642
+    },
+    {
+      "topic": "warranty",
+      "claim_id": "policy_warranty_duration",
+      "status": "ok",
+      "latency_ms": 8254.245300006005
+    },
+    {
+      "topic": "warranty",
+      "claim_id": "policy_warranty_exclusions",
+      "status": "ok",
+      "latency_ms": 1439.6246999967843
+    },
+    {
+      "topic": "cancellation",
+      "claim_id": "policy_cancellation_window",
+      "status": "ok",
+      "latency_ms": 1524.7221000026911
+    },
+    {
+      "topic": "cancellation",
+      "claim_id": "policy_cancellation_shipped",
+      "status": "ok",
+      "latency_ms": 12146.002100009355
+    },
+    {
+      "topic": "discount",
+      "claim_id": "policy_discount_stacking",
+      "status": "ok",
+      "latency_ms": 1323.1709999963641
+    },
+    {
+      "topic": "discount",
+      "claim_id": "policy_discount_validity",
+      "status": "ok",
+      "latency_ms": 1844.29850000015
+    }
+  ],
+  "n_ok": 14,
+  "n_failed": 0
+}
