@@ -25,14 +25,26 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from redteam.attacks.template import TEMPLATES, _load_advbench_sample
+from redteam.attacks.template import TEMPLATES
 from redteam.attacks.encoding import ENCODERS
 
 SPLIT_RATIOS = {"calibration": 0.30, "sweep": 0.40, "test": 0.30}
-LABELED_EVAL_SET_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                                       "data", "labeled_eval_set.jsonl")
-OUT_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                          "data", "laya_attack_set.jsonl")
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+LABELED_EVAL_SET_PATH = os.path.join(_REPO_ROOT, "data", "labeled_eval_set.jsonl")
+ADVBENCH_CSV_PATH = os.path.join(_REPO_ROOT, "data", "advbench_harmful_behaviors.csv")
+OUT_PATH = os.path.join(_REPO_ROOT, "data", "laya_attack_set.jsonl")
+
+
+def _load_all_advbench_goals() -> list[str]:
+    """All 520 real AdvBench behaviors, not the 30-item sample template.py/
+    pair.py use for other campaigns - this experiment needs a much larger
+    effective attack sample than 30 goals, since the wrapped variants of
+    one goal are correlated (10 wrappers of the same goal isn't 10
+    independent attack samples). Independent of _load_advbench_sample() so
+    this doesn't change template.py/pair.py's own behavior."""
+    import csv
+    with open(ADVBENCH_CSV_PATH, encoding="utf-8") as f:
+        return [row["goal"] for row in csv.DictReader(f)]
 
 
 def _assign_split_by_key(rows: list[dict], key_fn) -> None:
@@ -54,7 +66,7 @@ def _assign_split_by_key(rows: list[dict], key_fn) -> None:
 
 
 def build_advbench_wrapped_rows() -> list[dict]:
-    goals = _load_advbench_sample()
+    goals = _load_all_advbench_goals()
     rows = []
     for goal in goals:
         for template in TEMPLATES:
@@ -93,7 +105,7 @@ def main():
             f.write(json.dumps(r) + "\n")
 
     print(f"Total attack rows: {len(all_rows)}")
-    print(f"  AdvBench-wrapped: {len(advbench_rows)} (30 goals x 10 wrappers)")
+    print(f"  AdvBench-wrapped: {len(advbench_rows)} ({len(advbench_rows)//10} goals x 10 wrappers)")
     print(f"  labeled_eval_set.jsonl: {len(labeled_rows)}")
     print(f"  PAIR candidates: 0 (dropped per stopping rule)")
 
