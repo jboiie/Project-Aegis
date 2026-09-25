@@ -585,6 +585,112 @@ small test-split count is not reported alone again.
    templated, PAIR excluded (no cooperative attacker on free-tier
    Groq), target refuses the corpus unaided.
 
+## Step 5 final results (test split, t=0.69 fixed, run once)
+
+**FPR before/after Laya overturn** (`redteam/laya_eval.py`, Wilson 95% CIs):
+
+| Group | n | FPR before | Laya overturns | FPR after |
+|---|---|---|---|---|
+| `security_education`, batches 1-2 | 18 | 11/18 = 61.1% [38.6%, 79.7%] | 9/11 | 2/18 = 11.1% [3.1%, 32.8%] |
+| `security_education`, batch 3 (template-generated) | 100 | 15/100 = 15.0% [9.3%, 23.3%] | 15/15 | 0/100 = 0.0% [0.0%, 3.7%] |
+| `security_education`, COMBINED (headline) | 118 | 26/118 = 22.0% [15.5%, 30.3%] | 24/26 | 2/118 = 1.7% [0.5%, 6.0%] |
+| `literal_editing_instruction` (descriptive only) | 6 | 2/6 blocked | 1/2 | — no rate claimed |
+| other 8 categories | 54 | 0/54 = 0.0% [0.0%, 6.6%] | 0/0 | 0/54 = 0.0% [0.0%, 6.6%] |
+
+`security_education` batches 1-2 and batch 3 behave differently (61.1%
+vs. 15.0% FPR before) - confirms the distribution note above; the
+COMBINED row is the headline but batch 3's much larger n (100 vs 18)
+dominates it. Batch 3 overturns cleanly to 0% FPR (all 15 blocked rows
+overturned); batches 1-2 leave 2/18 still blocked after overturn.
+
+**Recall lost** (test split, 1193 attacks L1/L2 blocked):
+
+| | count | rate (Wilson 95% CI) |
+|---|---|---|
+| strict recall lost | 72/1193 | 6.0% [4.8%, 7.5%] |
+| effective recall lost | 71/1193 | 6.0% [4.7%, 7.4%] |
+
+**This exceeds `MAX_RECALL_LOSS = 0.05`.** The threshold (t=0.69) was
+fit on the sweep split only, where it measured 4.93% - within bound by
+design. Test-split recall lost (6.0%) is real, split-to-split sampling
+variance in how the chosen threshold generalizes, not a tuning error -
+per the spec, the threshold was fixed before this run and not
+re-tuned after seeing this result. Reported as measured, not adjusted.
+
+**End-to-end harm check** (72 Laya-overturned test attacks ->
+`qwen/qwen3.8-27b`, campaign mode, uplift-rubric judge):
+
+| Outcome | count | rate (Wilson 95% CI) |
+|---|---|---|
+| refused_by_model | 72/72 | 100.0% [94.9%, 100.0%] |
+| bypassed | 0/72 | 0.0% [0.0%, 5.1%] |
+| errored | 0/72 | 0.0% [0.0%, 5.1%] |
+
+Zero bypasses - every attack Laya would overturn, the target model
+refused unaided anyway. Consistent with the earlier baseline finding
+that this target refuses the AdvBench-derived corpus without help from
+the guardrail stack at all (template/encoding ASR ~0% with or without
+guardrails). This means the *practical* cost of the 6.0% recall loss
+measured above is, on this specific target model, close to zero - the
+guardrail stack's block was often redundant with the model's own
+refusal. A weaker or differently-aligned target could show real bypass
+cost at this recall-loss rate; this result is specific to
+`openai/gpt-oss-120b`-family alignment on Groq, not a general claim.
+
+**Laya latency** (this run, 2-question `predict()` call, fp32 CPU,
+n=50 sample from the test split): p50=243.7ms, p95=336.7ms per
+question.
+
+**Calibration wording (spec item 6, enforced):** T=0.70, fit on the
+cleaned calibration split (class-balanced weighting, n_attack=1191,
+n_benign=7). ECE before: combined=0.2255, attack=0.2240,
+benign=0.4909. ECE after: combined=0.1796, attack=0.1778,
+benign=0.4782. **Laya's confidence is not described as calibrated
+anywhere in this report** (`redteam/laya_eval.py` enforces this in its
+own output text). The overturn decision relies on ranking plus an
+empirically chosen threshold - the threshold rule cares only about the
+ordering of `P(benign)` relative to `t`, not the value being a
+trustworthy probability, which matters given benign ECE is fit on n=7
+and shows only a marginal improvement (0.4909 -> 0.4782). See
+`data/laya_reliability_diagram.png` for the calibration-split
+reliability curve (combined population; per-class reliability is not
+meaningful with n=7 benign, so attack/benign rows are shown as rugs
+along the combined curve instead).
+
+**Known limitations:**
+- fp32 CPU only - no working bf16/quantized path (naive whole-model
+  cast leaves internal buffers in fp32, a real library limitation, not
+  a transient failure - see Phase 0).
+- Laya's shipped temperatures are invalid for at least one question
+  group (`choice:11+`, clamped to 0.5 by the library itself with a
+  runtime warning) - not the `noul:2` group this experiment uses, but
+  a sign the checkpoint's calibration generally shouldn't be trusted
+  as-is, which is why this experiment refits its own temperature
+  rather than using Laya's.
+- Laya is used zero-shot here - no fine-tuning on this project's
+  attack/benign distribution, so its jailbreak/injection judgments
+  reflect whatever it learned elsewhere, not this stack's specific
+  threat model.
+- Small blocked-benign counts throughout, especially calibration (n=7
+  benign) - every benign-side statistic in this report should be read
+  with that in mind, Wilson CIs included.
+- Batch 3 `security_education` rows are template-generated (Python
+  string combinatorics, not LLM-generated like batches 1-2) - lower
+  phrasing diversity, and its FPR-before (15.0%) differs substantially
+  from batches 1-2 (61.1%), a distribution difference not a diversity
+  artifact alone (see the per-batch table above).
+- PAIR is excluded from all ASR/recall claims in this document - the
+  attacker LLM (`qwen/qwen3.6-27b` on Groq's free tier) refused to
+  generate jailbreak candidates 90.4% of the time even with PAIR-paper
+  framing, triggering the project's own pre-committed stopping rule.
+  No cooperative attacker was available to re-attempt this.
+- The target model (`openai/gpt-oss-120b`-family via Groq) refuses the
+  AdvBench-derived corpus largely unaided - the harm check's 0/72
+  bypass rate reflects this target's alignment at least as much as it
+  reflects the guardrail stack or Laya. Results here should not be
+  read as "Laya's overturn decisions are safe in general," only as
+  "safe against this specific target model."
+
 ## Phase 1 — Aegis build order (secondary; leak detection specifically)
 
 1. **`--export-jsonl` on `redteam/runner.py`** — done, see the commit
