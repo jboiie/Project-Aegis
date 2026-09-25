@@ -1,0 +1,71 @@
+{
+  "torch_num_threads": 8,
+  "power_state": "AC (plugged in)",
+  "laya": {
+    "fp32": [
+      {
+        "load_time_s": 4.6872945000068285,
+        "n_questions_per_call": 6,
+        "call_p50_ms": 943.3667000121204,
+        "call_p95_ms": 1596.9134099897926,
+        "per_question_p50_ms": 157.2277833353534,
+        "per_question_p95_ms": 266.15223499829875,
+        "n_calls_after_warmup": 23
+      },
+      {
+        "load_time_s": 0.6274334999907296,
+        "n_questions_per_call": 6,
+        "call_p50_ms": 964.9462000088533,
+        "call_p95_ms": 1625.5242300001553,
+        "per_question_p50_ms": 160.82436666814223,
+        "per_question_p95_ms": 270.92070500002586,
+        "n_calls_after_warmup": 23
+      },
+      {
+        "load_time_s": 0.6610386999964248,
+        "n_questions_per_call": 6,
+        "call_p50_ms": 942.7333999919938,
+        "call_p95_ms": 1599.9525099934542,
+        "per_question_p50_ms": 157.12223333199896,
+        "per_question_p95_ms": 266.65875166557566,
+        "n_calls_after_warmup": 23
+      }
+    ],
+    "bf16": [],
+    "bf16_error": "RuntimeError: mat1 and mat2 must have the same dtype, but got Float and BFloat16"
+  },
+  "deberta_l2": [
+    {
+      "load_time_s": 3.2309482999989996,
+      "p50_ms": 73.41409999935422,
+      "p95_ms": 93.86823999375338,
+      "n_calls_after_warmup": 23
+    },
+    {
+      "load_time_s": 2.868528499995591,
+      "p50_ms": 73.95489999908023,
+      "p95_ms": 95.51101000688503,
+      "n_calls_after_warmup": 23
+    },
+    {
+      "load_time_s": 2.971953100000974,
+      "p50_ms": 74.55789999221452,
+      "p95_ms": 96.03675000253133,
+      "n_calls_after_warmup": 23
+    }
+  ],
+  "outputguard": {
+    "p50_ms": 0.0014999968698248267,
+    "p95_ms": 0.006440006836783139
+  },
+  "token_budget": {
+    "n_answers": 18,
+    "p50_answer_tokens": 15.0,
+    "p95_answer_tokens": 59.549999999999976,
+    "max_answer_tokens": 74,
+    "worst_case_cascade_state_tokens": 126.54999999999998,
+    "fits_768_budget": true,
+    "fits_320_budget_english_checkpoint": true
+  },
+  "n_inputs": 28
+}
