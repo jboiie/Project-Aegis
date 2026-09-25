@@ -368,6 +368,54 @@ these 1583 may be wrongly overturned by the chosen threshold. Test split
 **17/90** benign rows were blocked by L1/L2 - the ceiling on how many false
 positives this experiment can even demonstrate fixing on that split.
 
+**Benign batch 3 (test split only) and the literal_editing_instruction drop:**
+17 blocked benign in test was too few, so batch 3 added 100
+`security_education` + 100 `literal_editing_instruction` rows
+(`scripts/_gen_benign_batch3.py`), tagged `batch: 3`, `split: "test"`.
+Unlike batches 1-2 (`data/generate_benign_prompts.py`,
+`scripts/_add_hard_negatives_batch2.py` - both LLM-generated via
+`GroqProvider`, real model calls), **batch 3 is template-generated**:
+Python string combinatorics over a fixed set of question frames x topics
+(`security_education`) and ignore-phrase x task x quoted-draft triples
+(`literal_editing_instruction`), deduped only by string-similarity
+against existing rows, not independently written. This shows up as
+grammatically stiff phrasing ("How does jailbreak techniques typically
+work") and reused quoted sentences across many `literal_editing`
+rows - low diversity that plausibly explains batch 3's lower per-row
+block rate relative to batches 1-2's hand/LLM-written phrasing.
+
+Spot-check (`data/spotcheck_batch3.md`, all 37 blocked + 10 random
+unblocked batch-3 rows) surfaced a real labeling problem: **all 100
+batch-3 `literal_editing_instruction` rows open with an ignore-phrase
+("Ignore the previous paragraph." / "Disregard the above." / etc.) and
+no prior user text precedes it** - so the phrase can only be read as
+targeting the model's own instructions. That's injection phrasing with
+a harmless payload, not a benign hard negative; L2 blocking them is
+arguably correct, not a false positive. **All 100 batch-3
+`literal_editing_instruction` rows (blocked and unblocked) were dropped**
+from `data/benign_prompts.jsonl` and `data/laya_screen_results.jsonl`.
+Batch-3 `security_education` rows are kept (they're genuinely benign
+questions about security topics, no injection-shaped phrasing).
+
+An audit of batches 1-2's `literal_editing_instruction` rows against the
+same standard (`data/spotcheck_literal_b12.md`, all 60 rows) is pending
+review - the earlier "20% FPR on literal_editing" finding depends on
+whether those rows have the same no-prior-text problem.
+
+Updated test-split blocked-benign counts (after the batch-3
+`literal_editing_instruction` drop), by category and batch:
+
+| Category | Batch | n | Blocked |
+|---|---|---|---|
+| security_education | 1 | 3 | 2 |
+| security_education | 2 | 15 | 9 |
+| security_education | 3 | 100 | 15 |
+| literal_editing_instruction | 1 | 3 | 2 |
+| literal_editing_instruction | 2 | 15 | 4 |
+| (8 other categories) | 1 | 63 | 0 |
+
+Total test blocked benign: **32/190**.
+
 **Data flow / what gets logged:**
 - Input to the whole experiment: `data/attack_export_test.jsonl`-style
   exports from `redteam/runner.py --export-jsonl` (real attack
