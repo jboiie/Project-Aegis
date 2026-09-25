@@ -798,12 +798,21 @@ combined-fix row - same rule, same denominator convention):
 
 **Plain-language takeaway: Laya's entire benefit comes from the L2
 side, not L1 - a free, zero-recall-cost regex fix handles L1's false
-positives completely, and combining that fix with Laya scoped only to
-L2 blocks (row 4) beats running Laya on the whole stack (row 5) on
-every single FPR number, at statistically indistinguishable recall
-cost (6.0% vs. 6.0%, same CIs). The deterministic L1 fix should ship
-regardless of whether Laya does; Laya's real, defensible contribution
-is specifically on L2's blind spot, not the stack as a whole.**
+positives completely.** Row 4 (L1 fix + Laya on L2 only) and row 5
+(Laya on the whole stack) are **comparable on `security_education`
+combined FPR (0.8% vs. 1.7%) and on b1-2 FPR (5.6% vs. 11.1%, 1/18 vs.
+2/18)** - both differences sit well inside overlapping Wilson CIs
+([0.1%,4.6%] vs. [0.5%,6.0%]; [1.0%,25.8%] vs. [3.1%,32.8%]), not a
+meaningful gap on this n. Recall cost is identical either way (6.0%
+strict/effective, same CIs both rows). **The combined design (row 4)
+is still preferred** - not because it wins the FPR number outright,
+but because it's the cleaner design: each fix targets a separate,
+independently-verified failure mode (L1's bare-keyword collision vs.
+L2's inability to separate benign educational text from real attacks
+at any threshold), rather than asking one model to cover both. The
+deterministic L1 fix should ship regardless of whether Laya does;
+Laya's defensible scope is specifically L2's blind spot, not the stack
+as a whole.
 
 **Known limitations:**
 - fp32 CPU only - no working bf16/quantized path (naive whole-model
