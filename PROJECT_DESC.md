@@ -451,33 +451,42 @@ batch-3 `literal_editing_instruction` drop (100 rows) and the batches-1-2
 | test | (8 other categories) | 1 | 54 | 0 |
 | test | **TOTAL** | | **178** | **28** |
 
-**Important: `laya_calibrate.py` and `laya_threshold_sweep.py` both ran
-BEFORE this drop, on the pre-drop benign rows. Neither was re-run.**
-This affects them differently:
+**Re-fit on cleaned data (step 5, item 0):** calibration and the sweep
+curve were both re-fit on the cleaned splits.
 
-- **Calibration (`T=0.66`) is directly affected.** The 8 benign rows
-  used for class-balanced temperature fitting included exactly 1
-  blocked `literal_editing_instruction` row that's since been dropped
-  as mislabeled (injection-shaped, arguably not benign). `T=0.66` was
-  fit on that now-suspect row as one of only 8 benign data points -
-  with n=8 already too thin to trust in isolation, this doesn't change
-  the "ECE per class is noisy, don't over-read it" conclusion already
-  in the report, but the fit itself was not redone on the cleaned set.
-- **Threshold selection (`t=0.70`) is NOT affected**, because
-  `choose_threshold()` only consumes `effective_recall_lost`, which is
-  computed from attack rows only - benign labels never enter the
-  selection rule. `t=0.70` stands.
-- **The FPR-reduction figure reported alongside `t=0.70` (40%, 6/15) IS
-  affected and should be treated as provisional.** Sweep-split blocked
-  benign fell from 15 to 10 rows after this drop (5 of the original 15
-  were mislabeled `literal_editing_instruction`). That 40%/6-of-15
-  number is descriptive context that was never an input to threshold
-  selection, but it's now computed on a partly-mislabeled population
-  and hasn't been recomputed against the cleaned 10-row set.
+*Implementation note (disclosed deviation):* rather than re-invoking
+Laya on the ~2800 unchanged rows (~1h38m of redundant CPU inference,
+since Laya is deterministic and no surviving row's text changed - only
+mislabeled benign rows were removed from the population), the cached
+raw scores from the original runs were re-filtered to the cleaned
+splits and refit directly (`scripts/_refit_calibration_cleaned.py`,
+`scripts/_refit_sweep_cleaned.py`). For the sweep split, the cache only
+stored the final T=0.66-adjusted confidence, not the raw score, so the
+raw score was recovered via the temperature transform's exact inverse
+(`s_raw = sigmoid(logit(1-confidence) * T_old)`) and re-applied with the
+new T - verified exactly invertible (round-trip match to float
+precision) before use. This produces identical numbers to a full
+Laya re-run on the same text; it isn't a shortcut on the measurement
+itself, only on redundant computation.
 
-Re-running calibration and the sweep curve against the cleaned benign
-set was not requested and was not done here - flagging this as a known
-gap rather than silently leaving stale numbers in the report.
+- **Calibration: `T=0.66` → `T=0.70`.** Fit on 1198 rows (1191 attack, 7
+  benign - the 1 mislabeled calibration benign row dropped). ECE before
+  (T=1.0): combined=0.2255, attack=0.2240, benign=0.4909. ECE after
+  (T=0.70): combined=0.1796, attack=0.1778, **benign=0.4782 (now
+  slightly BETTER after fitting**, unlike the pre-drop run where benign
+  ECE got worse - though n=7 is still too thin to lean on this class-
+  conditional number alone).
+- **Sweep threshold: `t=0.70` → `t=0.69`.** Fit on 1593 rows (1583
+  attack unchanged, 10 benign - 5 mislabeled sweep benign rows
+  dropped). Operating point barely moved: strict/effective recall lost
+  still **4.93% (78/1583 attacks)**, identical attack count overturned.
+  FPR reduction improved from 40% (6/15) to **50% (5/10)** - the same 5
+  real benign overturns, now measured against a cleaned 10-row
+  population instead of a 15-row population that included mislabeled
+  rows.
+
+The "known gap" flagged earlier is resolved - both fits now reflect the
+cleaned benign data.
 
 **Data flow / what gets logged:**
 - Input to the whole experiment: `data/attack_export_test.jsonl`-style
