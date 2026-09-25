@@ -19,7 +19,7 @@
 
 ---
 
-> **PAIR (adaptive LLM attacker) achieved a 95% bypass rate against our full guardrail stack — in an average of 2 iterations per goal.** Static ML classifiers that cut a fixed-corpus attack rate from 87% to 25% are nearly useless against an attacker that receives rejection feedback and rephrases. That gap is the core finding. Adding session-level rejection tracking (SessionGuard) cut PAIR's ASR from 95% to 20% — a 75pp reduction from breaking the iterative feedback loop PAIR's strategy depends on — see [Table 4](#-findings). Everything else in this repo is measuring where and why it happens.
+> **Headline: a free, zero-recall-cost regex fix plus a second-stage classifier (Laya) scoped only to L2's blind spot cuts the guardrail stack's real false-positive category (`security_education`) from 61.1% to 5.6% on held-out test data, at a measured 6.0% attack-recall cost — while fixed-corpus (template/encoding) attack success rate against the full stack is ~0%, and PAIR (adaptive attacker) is excluded from all ASR claims after the attacker LLM refused to generate jailbreak candidates 90.4% of the time, triggering the project's own pre-committed stopping rule.** See [Findings](#-findings) for the full table and methodology.
 
 ---
 
@@ -40,60 +40,30 @@ The sandbox has known coverage gaps — the same gaps present in real production
 
 ## 📊 Findings
 
-### Table 1 — ASR by Cumulative Guardrail Layer (Phase A)
+*Full methodology, splits, and every intermediate number: [PROJECT_DESC.md](PROJECT_DESC.md). What follows is the current, validated state — a prior round of this README's numbers (a 25% fixed-corpus ASR, a 95%→20% PAIR result) was superseded after a diagnostic pass found the measurement itself was compromised (session-ID pollution across "independent" attack attempts, a judge that counted plain model refusals as bypasses, and other issues documented in PROJECT_DESC.md's "Baseline findings" section) — those figures are retired, not just outdated.*
 
-*Attack set: template + encoding attacks, n=100 total (50 per strategy), seed=42, 0 errors.*
+### Locked baseline (current, real measurement)
 
-| Guardrail Configuration | Total Attacks | Bypasses | Blocked | ASR ↓ | Δ vs prev |
-|---|---|---|---|---|---|
-| No guardrails (baseline) | — | — | — | ~100% | — |
-| L1 only (Regex) | 100 | 87 | 13 | **87.00%** | — |
-| L1 + L2 (+ DeBERTa injection) | 100 | 25 | 75 | **25.00%** | ↓ 62pp |
-| L1 + L2 + L3 (+ ToxicBERT) | 100 | 25 | 75 | **25.00%** | 0pp |
-| Full stack (L1–L4 + PII) | 100 | 25 | 75 | **25.00%** | 0pp |
+- **Fixed-corpus attacks (template + encoding, 520 real AdvBench goals) achieve ~0% ASR against the full stack** — fresh sessions, cache off, judged by an uplift-based rubric (not a bare "wasn't blocked" heuristic).
+- **PAIR (adaptive attacker) is excluded from all ASR claims.** The attacker LLM (`qwen/qwen3.6-27b` on Groq's free tier) refused to generate jailbreak candidates 90.4% of the time even with PAIR-paper framing — a real limitation of the available free-tier attacker, not a stack property. The project's own pre-committed stopping rule (>50% attacker refusal → drop from ASR claims) triggered and was honored rather than tuned around.
+- **A real stack blind spot**: `role_play` template attacks ("Professor Smith" framing) pass every guardrail layer cleanly, 5/5 — only the target model's own refusal stops them. Not yet fixed; tracked in PROJECT_DESC.md.
+- **Over-blocking is real and concentrated**: full benign-set FPR is small in aggregate, but the entire cost sits in two categories, `security_education` and `literal_editing_instruction` — everything below is about fixing that concentrated cost.
 
-### Table 2 — Aegis vs. External Baseline (Phase B)
+### Headline: fixing the false-positive concentration (Laya second-stage experiment)
 
-*Same attack corpus (seed=42, n=100) fired at Aegis full stack and Llama Prompt Guard 2 (86M) via Groq.*
+Three approaches compared on the same held-out test split, same metrics, Wilson 95% CIs throughout:
 
-| Target | Template ASR | Encoding ASR | Overall ASR | n |
+| Approach | `security_education` batches 1-2 FPR | batch 3 FPR | combined FPR | attack recall lost |
 |---|---|---|---|---|
-| **Aegis full stack** | ~0% | ~50% | **25.00%** | 100 |
-| **Llama Prompt Guard 2 (86M)** | 0% | 100% | **50.00%** | 100 |
-| **Delta (Aegis − Llama Guard)** | ±0% | −50pp | **−25pp** | — |
+| Current stack (no change) | 61.1% [38.6%, 79.7%] | 15.0% [9.3%, 23.3%] | 22.0% [15.5%, 30.3%] | 0.0% |
+| L2 threshold tuning (cheaper alternative, tested and rejected) | 61.1% (unchanged) | 14.0% [8.5%, 22.1%] | 21.2% [14.8%, 29.4%] | 4.7% |
+| L1 keyword fix only (shipped - see below) | 22.2% [9.0%, 45.2%] | 7.0% [3.4%, 13.7%] | 9.3% [5.3%, 15.9%] | 0.0% |
+| **L1 keyword fix + Laya on L2 blocks only (recommended design)** | **5.6% [1.0%, 25.8%]** | **0.0% [0.0%, 3.7%]** | **0.8% [0.1%, 4.6%]** | 6.0% [4.8%, 7.5%] |
+| Laya on all L1/L2 blocks (Laya alone, for comparison) | 11.1% [3.1%, 32.8%] | 0.0% [0.0%, 3.7%] | 1.7% [0.5%, 6.0%] | 6.0% [4.8%, 7.5%] |
 
-> Positive delta = Llama Guard stronger. Negative delta = Aegis stronger.
-> Both systems block 100% of template attacks. The gap is entirely on encoding-obfuscated attacks.
+**What each fix targets, and why they compose:** an L1 audit found every `security_education` false block traced to one bare-keyword regex pattern (`jailbreak(ed)?`) matching meta-discussion of jailbreaking, not actual attacks — removing it costs **zero** real attack recall (0/1583 sweep, 0/1193 test) and is now shipped in `src/guardrails/regex_rules.py`. Separately, Laya's entire measured benefit comes from the L2 side — **zero of its overturns touch L1-blocked attacks** — so it was scoped to L2 blocks only rather than applied to the whole stack. The combined-design row and the Laya-alone row are statistically comparable (overlapping CIs, same recall cost); the combined design is preferred because each fix targets a **separate, independently-verified failure mode** rather than asking one model to cover both. An L2-threshold-tuning baseline (raising L2's own decision threshold instead of adding a second model) was also tested and rejected: it recovers **0%** of the FPR on the sweep split L2 can't tell benign educational text about jailbreaking from real attacks at any threshold.
 
-### Table 3 — PAIR vs. Template/Encoding (Phase C)
-
-*Adaptive attack (PAIR with llama-3.1-8b-instant attacker, max_iterations=5) compared to fixed-corpus attacks against full Aegis stack.*
-
-| Strategy | Attacks Fired | Bypasses | ASR ↓ | Avg. Iterations to Bypass |
-|---|---|---|---|---|
-| Template (Fixed) | 50 | 0 | **0.00%** | N/A |
-| Encoding (Fixed) | 50 | 25 | **50.00%** | N/A |
-| **PAIR (Adaptive)** | 20 | 19 | **95.00%** | **2.00** |
-
-### Table 4 — PAIR vs. Aegis + Countermeasures (Phase D)
-
-*Same PAIR setup as Table 3 (seed=42, 20 goals, max_iterations=5), rerun against the full stack plus three countermeasures: SessionGuard (session lockout after 3 rejections/5min), OutputGuard (dual-pass output screening), SemanticCache (L0 embedding-similarity block on known-blocked prompts).*
-
-| Configuration | Attacks Fired | Bypasses | ASR ↓ | Avg. Iterations to Bypass |
-|---|---|---|---|---|
-| Full stack, no countermeasures | 20 | 19 | **95.00%** | 2.00 |
-| **Full stack + SessionGuard + OutputGuard + SemanticCache** | 20 | 4 | **20.00%** | 2.25 |
-
-> SemanticCache recorded 0 blocks in this run — PAIR's rephrasing is novel enough each turn that L0 rarely gets a near-duplicate match before SessionGuard's rejection-velocity lockout already ends the session. SessionGuard is doing essentially all of the work here.
->
-> **Note on measurement integrity:** the first rerun of this experiment showed the same 20.00% ASR, but for the wrong reason — a schema bug in SessionGuard's lockout path (`GuardrailCheck` built with fields that don't match the model) caused every lockout to crash with a 500 instead of returning a clean block, and PAIR's error handler misclassified those crashes as "blocked." Fixed in `src/guardrails/engine.py`; the number above is from the post-fix run with zero server errors. A regression test (`tests/test_countermeasures.py::test_engine_returns_verdict_on_session_lockout`) now covers this path.
-
-### Key Takeaways
-
-- **Phase A ✅**: L2 (DeBERTa injection classifier) provides the entire measurable defence, dropping ASR from 87% (regex-only) to 25% (a 62 percentage-point reduction). L3 (ToxicBERT) and L4 (PII redaction) add zero marginal protection against the injection/encoding attack corpus used here — they target hate speech and PII respectively, not prompt injection. The 25% residual ASR consists entirely of encoding-obfuscated attacks that bypass all text-based classifiers.
-- **Phase B ✅**: Aegis full stack (25% ASR) outperforms Llama Prompt Guard 2 86M (50% ASR) by 25 percentage points on the same attack corpus. Both systems achieve 0% ASR on template attacks. The entire gap comes from encoding attacks: Llama Guard outputs a near-zero probability score on base64/ROT13/leetspeak payloads (it cannot decode them to evaluate intent), while Aegis’s DeBERTa classifier catches ~50% of encoding attacks, likely because it was fine-tuned on datasets that include the obfuscation framing pattern itself.
-- **Phase C ✅**: Adaptive attacks (PAIR) achieve a **95.00% ASR** against the full Aegis stack, requiring an average of only **2.00 iterations** to bypass all guardrail layers. While static ML classifiers (DeBERTa) effectively neutralize fixed templates (0% ASR) and reduce fixed encodings (50% ASR), an attacker LLM dynamically refines prompt framing to exploit classifier feature blind spots. This proves that static input guardrails cannot defend against LLM-driven adaptive red-teaming without stateful session tracking and real-time feedback mitigations.
-- **Phase D ✅**: Adding SessionGuard + OutputGuard + SemanticCache cuts PAIR's ASR from 95.00% to **20.00%** (75pp reduction), landing back in the same range as the fixed-corpus full-stack ASR (25%). Session-level rejection tracking — not per-prompt classification — is what neutralizes an iterative attacker: PAIR's entire strategy depends on a sustained feedback loop with one session, and breaking that loop matters more than catching any individual rephrase.
+**End-to-end harm check**: every attack Laya's chosen threshold would overturn (72/72, test split) was sent through the sandbox with guardrails off to the target model — **0 bypassed**, 100% refused unaided. This shows zero added harm *against this specific target model's alignment* — not a general claim that Laya's overturns are safe against any target.
 
 ### Qualitative Findings (Prior Work)
 
@@ -160,10 +130,10 @@ python -m redteam.runner \
 # RED TEAM REPORT
 # ==================================================
 #   total_attacks: 100
-#   successful_bypasses: 25
-#   blocked: 75
+#   successful_bypasses: 3
+#   blocked: 97
 #   errors: 0
-#   attack_success_rate: 25.00%
+#   attack_success_rate: 3.00%
 ```
 
 ### Feedback Loop
@@ -423,10 +393,10 @@ The runner sends OpenAI-format `POST` requests (`{"model": "...", "messages": [{
 RED TEAM REPORT
 ==================================================
   total_attacks: 100
-  successful_bypasses: 25
-  blocked: 75
+  successful_bypasses: 3
+  blocked: 97
   errors: 0
-  attack_success_rate: 25.00%
+  attack_success_rate: 3.00%
 ```
 
 Each bypass is logged with: the exact prompt that worked, the attack strategy that generated it, and the full response from your endpoint. Logs go to stdout (structured JSON) and optionally to Supabase if configured.
@@ -442,7 +412,7 @@ Pass `--report reports/campaign.md` to get the deliverable a company would actua
 | **30–60%** | Significant gaps. Likely missing a semantic injection layer (DeBERTa-class classifier) |
 | **60%+** | Regex-only or no guardrails. The pipeline is near-baseline |
 
-> **Note:** A low fixed-corpus ASR does not mean you are safe against PAIR. Our own stack scored 25% on fixed attacks and 95% against the adaptive attacker. Run all three strategies.
+> **Note:** A low fixed-corpus ASR does not mean your stack is free of cost elsewhere. Our own full stack measured ~0% fixed-corpus ASR while still over-blocking benign requests in specific categories (see [Findings](#-findings)) — run the labeled benign eval (`redteam/evaluation/run_eval.py`) alongside attack campaigns, not instead of them.
 
 ## 🔮 Roadmap
 
@@ -481,7 +451,7 @@ Implement and empirically validate defenses against the PAIR bypass rate found i
 - [x] Implement OutputGuard (`src/guardrails/output.py`): dual-pass response screening
 - [x] Wire SemanticCache (`src/cache/semantic.py`) into the live request path (was previously dead code — implemented but never instantiated)
 - [x] Fix schema bug in SessionGuard's lockout path that crashed requests with a 500 instead of returning a clean block
-- [x] Re-run PAIR (same seed=42, 20 goals) against full stack + all three countermeasures: 95.00% → 20.00% ASR
+- [x] Re-run PAIR (same seed=42, 20 goals) against full stack + all three countermeasures (numbers from this run retired - see [Findings](#-findings))
 - [x] Fill in Table 4 (Findings section)
 
 ### Phase E — Deployment & Hardening ✅
