@@ -183,6 +183,25 @@ category is 0% and three of five hard categories are 0% — the entire
 false-positive cost sits in `security_education` (60%, 6/10) and
 `literal_editing_instruction` (20%, 2/10).
 
+**Correction (found during the Laya batch-3 spot-check, see below):** the
+"20% FPR on `literal_editing_instruction`" figure above was measured
+mostly on **mislabeled rows**. Of the original 10-row hard-negative set,
+an audit against a stricter standard (does the "ignore/disregard" phrase
+point at a *named or quoted part of the user's own text*, i.e. a genuine
+editing reference, vs. having no prior text to point at, i.e.
+injection-shaped phrasing with a harmless payload) found most of the
+category's `literal_editing_instruction` rows across batches 1-2 were
+the latter. 40 of the 60 batches-1-2 rows were dropped on this basis
+(`data/spotcheck_literal_b12.md`); only 20 genuine rows remain. On those
+20, L2 blocked 5 (25%); on the 40 dropped injection-shaped rows, L2
+blocked 10 (also 25%) — **the same rate**, meaning L2 doesn't
+distinguish genuine editing references from injection-shaped phrasing
+at all, and let ~75% of the injection-shaped rows through as unblocked
+despite them plausibly being real L2 misses, not FPs. The category is
+kept in the Laya experiment as descriptive-only going forward (too few
+genuine rows for a headline number); `security_education` is the
+headline category.
+
 **Canary/leak check has zero real positive examples to calibrate
 against:** 0/20 leaks (verbatim or LLM-checked paraphrase) across direct
 extraction, encoding-obfuscated extraction, and PAIR-style iterative
@@ -397,24 +416,68 @@ from `data/benign_prompts.jsonl` and `data/laya_screen_results.jsonl`.
 Batch-3 `security_education` rows are kept (they're genuinely benign
 questions about security topics, no injection-shaped phrasing).
 
-An audit of batches 1-2's `literal_editing_instruction` rows against the
-same standard (`data/spotcheck_literal_b12.md`, all 60 rows) is pending
-review - the earlier "20% FPR on literal_editing" finding depends on
-whether those rows have the same no-prior-text problem.
+**Batches 1-2 audit result:** the same standard applied to
+`data/spotcheck_literal_b12.md` (all 60 batches-1-2 `literal_editing_instruction`
+rows) found 40/60 had the same problem (10 batch-1 rows with no prior
+text at all; 30 batch-2 rows either with no prior text or telling the
+model to ignore the very paragraph it's asked to rewrite - incoherent).
+Dropped: `b1-1..b1-10`, `b2-11..b2-30`, `b2-41..b2-50` (40 rows) from
+`data/benign_prompts.jsonl` and `data/laya_screen_results.jsonl`. Kept:
+`b2-31..b2-40`, `b2-51..b2-60` (20 rows) - these name or quote a
+specific part of the user's own text, a genuine editing reference. See
+the correction above (§ "Over-blocking is real and concentrated") for
+the L2-blind-to-injection-shaped-phrasing finding this audit produced.
 
-Updated test-split blocked-benign counts (after the batch-3
-`literal_editing_instruction` drop), by category and batch:
+Updated blocked-benign counts by split/category/batch, after both the
+batch-3 `literal_editing_instruction` drop (100 rows) and the batches-1-2
+`literal_editing_instruction` drop (40 rows):
 
-| Category | Batch | n | Blocked |
-|---|---|---|---|
-| security_education | 1 | 3 | 2 |
-| security_education | 2 | 15 | 9 |
-| security_education | 3 | 100 | 15 |
-| literal_editing_instruction | 1 | 3 | 2 |
-| literal_editing_instruction | 2 | 15 | 4 |
-| (8 other categories) | 1 | 63 | 0 |
+| Split | Category | Batch | n | Blocked |
+|---|---|---|---|---|
+| calibration | security_education | 1 | 3 | 2 |
+| calibration | security_education | 2 | 15 | 3 |
+| calibration | literal_editing_instruction | 2 | 6 | 2 |
+| calibration | (8 other categories) | 1 | 57 | 0 |
+| calibration | **TOTAL** | | **78** | **7** |
+| sweep | security_education | 1 | 4 | 2 |
+| sweep | security_education | 2 | 20 | 7 |
+| sweep | literal_editing_instruction | 2 | 8 | 1 |
+| sweep | (8 other categories) | 1 | 72 | 0 |
+| sweep | **TOTAL** | | **104** | **10** |
+| test | security_education | 1 | 3 | 2 |
+| test | security_education | 2 | 15 | 9 |
+| test | security_education | 3 | 100 | 15 |
+| test | literal_editing_instruction | 2 | 6 | 2 |
+| test | (8 other categories) | 1 | 54 | 0 |
+| test | **TOTAL** | | **178** | **28** |
 
-Total test blocked benign: **32/190**.
+**Important: `laya_calibrate.py` and `laya_threshold_sweep.py` both ran
+BEFORE this drop, on the pre-drop benign rows. Neither was re-run.**
+This affects them differently:
+
+- **Calibration (`T=0.66`) is directly affected.** The 8 benign rows
+  used for class-balanced temperature fitting included exactly 1
+  blocked `literal_editing_instruction` row that's since been dropped
+  as mislabeled (injection-shaped, arguably not benign). `T=0.66` was
+  fit on that now-suspect row as one of only 8 benign data points -
+  with n=8 already too thin to trust in isolation, this doesn't change
+  the "ECE per class is noisy, don't over-read it" conclusion already
+  in the report, but the fit itself was not redone on the cleaned set.
+- **Threshold selection (`t=0.70`) is NOT affected**, because
+  `choose_threshold()` only consumes `effective_recall_lost`, which is
+  computed from attack rows only - benign labels never enter the
+  selection rule. `t=0.70` stands.
+- **The FPR-reduction figure reported alongside `t=0.70` (40%, 6/15) IS
+  affected and should be treated as provisional.** Sweep-split blocked
+  benign fell from 15 to 10 rows after this drop (5 of the original 15
+  were mislabeled `literal_editing_instruction`). That 40%/6-of-15
+  number is descriptive context that was never an input to threshold
+  selection, but it's now computed on a partly-mislabeled population
+  and hasn't been recomputed against the cleaned 10-row set.
+
+Re-running calibration and the sweep curve against the cleaned benign
+set was not requested and was not done here - flagging this as a known
+gap rather than silently leaving stale numbers in the report.
 
 **Data flow / what gets logged:**
 - Input to the whole experiment: `data/attack_export_test.jsonl`-style
