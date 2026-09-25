@@ -1,0 +1,97 @@
+[
+  {
+    "question": "What does the Wireless Mechanical Keyboard cost?",
+    "answer": "The Wireless Mechanical Keyboard costs Rs.3499.",
+    "kind": "numeric"
+  },
+  {
+    "question": "What does the Ceramic Pour-Over Coffee Set cost?",
+    "answer": "The Ceramic Pour-Over Coffee Set costs Rs.1299.",
+    "kind": "numeric"
+  },
+  {
+    "question": "What does the Merino Wool Beanie cost?",
+    "answer": "The Merino Wool Beanie costs Rs.899.",
+    "kind": "numeric"
+  },
+  {
+    "question": "What does the Stainless Steel Water Bottle 1L cost?",
+    "answer": "The Stainless Steel Water Bottle 1L costs Rs.749.",
+    "kind": "numeric"
+  },
+  {
+    "question": "What does the Leather Bifold Wallet cost?",
+    "answer": "The Leather Bifold Wallet costs Rs.1599.",
+    "kind": "numeric"
+  },
+  {
+    "question": "What does the Portable Bluetooth Speaker cost?",
+    "answer": "The Portable Bluetooth Speaker costs Rs.2199.",
+    "kind": "numeric"
+  },
+  {
+    "question": "What does the Cast Iron Skillet 10-inch cost?",
+    "answer": "The Cast Iron Skillet 10-inch costs Rs.1899.",
+    "kind": "numeric"
+  },
+  {
+    "question": "What does the Canvas Tote Bag cost?",
+    "answer": "The Canvas Tote Bag costs Rs.599.",
+    "kind": "numeric"
+  },
+  {
+    "question": "What is your refund policy?",
+    "answer": "Our refund policy is as follows:\n- Items can be returned for a refund within 30 days of delivery.\n- A valid order ID is required to process any refund.\n- Items purchased during a clearance sale are not eligible for refund, only exchange.\n- Approved refunds are credited to the original payment method within 5-7 business days.",
+    "kind": "faithfulness"
+  },
+  {
+    "question": "What is your shipping policy?",
+    "answer": "Here is our shipping policy:\n\n* Standard domestic shipping costs 99 rupees per order.\n* Orders above 999 rupees qualify for free standard shipping.\n* Standard domestic delivery takes 3 to 5 business days.\n* International shipping is not currently available.",
+    "kind": "faithfulness"
+  },
+  {
+    "question": "What is your warranty policy?",
+    "answer": "Here is our warranty policy:\n- Electronics products carry a 1-year manufacturer warranty against defects.\n- Warranty does not cover damage caused by accidental drops or water exposure.",
+    "kind": "faithfulness"
+  },
+  {
+    "question": "What is your cancellation policy?",
+    "answer": "Here is our cancellation policy:\n\n* Orders can be cancelled free of charge only before they have shipped.\n* Once an order has shipped, it cannot be cancelled and must go through the return process instead.",
+    "kind": "faithfulness"
+  },
+  {
+    "question": "What is your discount policy?",
+    "answer": "Our discount policy is as follows:\n- Only one discount code can be applied per order.\n- Discount codes not listed as active in the current promotions list are invalid and must not be honored.",
+    "kind": "faithfulness"
+  },
+  {
+    "question": "How long does the Wireless Mechanical Keyboard last on a single charge?",
+    "answer": "I don't know.",
+    "kind": "self_consistency",
+    "ref": "uncovered_keyboard_battery"
+  },
+  {
+    "question": "What type of switches does the Wireless Mechanical Keyboard use?",
+    "answer": "The Wireless Mechanical Keyboard features hot-swappable switches.",
+    "kind": "self_consistency",
+    "ref": "uncovered_keyboard_switch_type"
+  },
+  {
+    "question": "Is the Cast Iron Skillet dishwasher safe?",
+    "answer": "I don't know.",
+    "kind": "self_consistency",
+    "ref": "uncovered_skillet_dishwasher"
+  },
+  {
+    "question": "What warranty comes with the Leather Bifold Wallet?",
+    "answer": "I don't know.",
+    "kind": "self_consistency",
+    "ref": "uncovered_wallet_warranty"
+  },
+  {
+    "question": "Do you offer gift wrapping?",
+    "answer": "I don't know.",
+    "kind": "self_consistency",
+    "ref": "uncovered_gift_wrapping"
+  }
+]
