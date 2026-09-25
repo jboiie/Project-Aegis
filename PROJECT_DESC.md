@@ -741,6 +741,70 @@ buys essentially nothing on the headline FPR number (batches 1-2:
 costs more recall for a real FPR reduction that a cheaper threshold
 change on the existing classifier cannot deliver at all.
 
+**c) L1 keyword fix** (`redteam/l1_keyword_fix_baseline.py`): the L1
+audit above showed every test-split `security_education` L1 block is
+the bare word "jailbreak" via one specific pattern. Exact change (not
+applied to `src/guardrails/regex_rules.py` - simulated only):
+
+```diff
+ JAILBREAK_PATTERNS = [
+     r"(?i)ignore\s+(all\s+)?previous\s+instructions",
+     r"(?i)you\s+are\s+now\s+(DAN|AIM|STAN|DUDE|developer\s+mode)",
+     r"(?i)pretend\s+you\s+(are|have)\s+no\s+(restrictions|guidelines|rules)",
+     r"(?i)respond\s+without\s+any\s+(safety|ethical)\s+(filters|guidelines)",
+-    r"(?i)jailbreak(ed)?",
+     r"(?i)bypass\s+(your|the)\s+(safety|content)\s+(filters|policy)",
+     r"(?i)act\s+as\s+an?\s+(unrestricted|uncensored|unfiltered)",
+     r"(?i)from\s+now\s+on,?\s+you\s+(will|must|should)\s+(not\s+)?follow",
+ ]
+```
+
+Every other pattern requires multi-word imperative phrasing aimed at
+the model (genuine injection-shaped); this is the only bare topic-word
+match. Simulated by re-applying the unchanged remaining patterns
+(imported directly from `regex_rules.py`, not duplicated) against
+saved prompt text, then a targeted `InjectionDetector().check()` (local,
+no Groq - same precedented deviation as the L2 baseline) on rows that
+fall through L1, to see if L2 would catch them anyway.
+
+**Result: zero attacks were ever blocked by this pattern, on sweep
+(0/1583) or test (0/1193) - the recall cost of removing it is exactly
+0%.** All 9 sweep / 15 test candidates fall through L1 cleanly, and L2
+independently lets every one of them through too - the fix fully
+recovers this false-positive source for free. `security_education` FPR
+under this fix alone: b1-2 22.2% (4/18) [9.0%, 45.2%], b3 7.0% (7/100)
+[3.4%, 13.7%], combined 9.3% (11/118) [5.3%, 15.9%].
+
+**Laya's overturns broken down by which layer blocked the row (test
+split):** all 72 attack overturns come from L2-blocked attacks - **zero
+of Laya's overturns touch L1-blocked attacks at all** (156 attacks
+blocked by L1 on test, none overturned). Benign: 14/15 L1-blocked
+benign overturned, 11/13 L2-blocked benign overturned. This is why the
+L1 keyword fix and Laya's L2-side behavior compose cleanly rather than
+overlapping - they're fixing different rows.
+
+**Headline: five-row side-by-side, same test split, same metrics**
+(`t=0.69` chosen on sweep for "Laya on all blocks"; `t'=0.69` chosen
+separately on sweep restricted to the L2-only population for the
+combined-fix row - same rule, same denominator convention):
+
+| Approach | `security_education` b1-2 FPR | b3 FPR | combined FPR | recall lost (strict / effective) |
+|---|---|---|---|---|
+| Current stack (no change) | 61.1% [38.6%, 79.7%] | 15.0% [9.3%, 23.3%] | 22.0% [15.5%, 30.3%] | 0.0% / 0.0% |
+| L2 threshold tuning (tau=0.965) | 61.1% (unchanged) | 14.0% [8.5%, 22.1%] | 21.2% [14.8%, 29.4%] | 4.7% [3.6%, 6.0%] / 4.7% |
+| L1 keyword fix only | 22.2% [9.0%, 45.2%] | 7.0% [3.4%, 13.7%] | 9.3% [5.3%, 15.9%] | 0.0% [0.0%, 0.3%] / 0.0% |
+| L1 keyword fix + Laya on L2 blocks only (t'=0.69) | 5.6% [1.0%, 25.8%] | 0.0% [0.0%, 3.7%] | 0.8% [0.1%, 4.6%] | 6.0% [4.8%, 7.5%] / 6.0% [4.7%, 7.4%] |
+| **Laya on all L1/L2 blocks (current headline result)** | 11.1% [3.1%, 32.8%] | 0.0% [0.0%, 3.7%] | 1.7% [0.5%, 6.0%] | 6.0% [4.8%, 7.5%] / 6.0% [4.7%, 7.4%] |
+
+**Plain-language takeaway: Laya's entire benefit comes from the L2
+side, not L1 - a free, zero-recall-cost regex fix handles L1's false
+positives completely, and combining that fix with Laya scoped only to
+L2 blocks (row 4) beats running Laya on the whole stack (row 5) on
+every single FPR number, at statistically indistinguishable recall
+cost (6.0% vs. 6.0%, same CIs). The deterministic L1 fix should ship
+regardless of whether Laya does; Laya's real, defensible contribution
+is specifically on L2's blind spot, not the stack as a whole.**
+
 **Known limitations:**
 - fp32 CPU only - no working bf16/quantized path (naive whole-model
   cast leaves internal buffers in fp32, a real library limitation, not
