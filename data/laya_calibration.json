@@ -1,0 +1,24 @@
+{
+  "temperature": 0.66,
+  "class_balance_method": "class_balanced_weighting",
+  "n_calibration_rows": 1199,
+  "n_attack": 1191,
+  "n_benign": 8,
+  "score_definition": "s = max(jailbreak.noul, prompt_injection.noul); P(benign) = 1 - sigmoid(logit(s)/T)",
+  "ece_before": {
+    "ece_combined": 0.22518532610508782,
+    "ece_attack": 0.22382488884696164,
+    "ece_benign": 0.42772042290952794,
+    "n_attack": 1191,
+    "n_benign": 8
+  },
+  "ece_after": {
+    "ece_combined": 0.1728051240167593,
+    "ece_attack": 0.17020192284458263,
+    "ece_benign": 0.5603566985253079,
+    "n_attack": 1191,
+    "n_benign": 8
+  },
+  "temperature_grid_min": 0.3,
+  "temperature_grid_max": 3.0
+}
